@@ -4,7 +4,7 @@
 #############################################################################
 
 # install/load packages
-pacman::p_load(readxl,dplyr,lubridate, ggplot2)
+pacman::p_load(readxl,dplyr,lubridate, ggplot2, usethis)
 
 # Import demographic data
 demographics <- read_excel("database/Demographics_database_unlocked.xlsx", sheet = "Sheet1")
