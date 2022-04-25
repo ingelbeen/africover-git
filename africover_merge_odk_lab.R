@@ -19,6 +19,7 @@ baseline_demographics <- baseline_demographics %>%
 
 # Import latest ODK datasets
 # F1 baseline
+# household data
 F1a <- read_excel("database/20220323/F1a.xlsx")
 F1a$startdate <- as.Date(F1a$start)
 F1a <- F1a %>%
@@ -34,7 +35,7 @@ dups = which(duplicated(F1a%>%select(openhdsindividualId,is_consent_signed, hous
 length(dups)
 # Remove duplicated rows
 F1a = F1a %>% filter(!row.names(F1a) %in% dups)
-
+# individual participant data
 F1b <- read_excel("database/20220323/F1b.xlsx")
 # F1b_v1 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F1b_Base_Individual_v1_0.csv")
 # F1b_v1$motive <- NA
@@ -87,6 +88,11 @@ missingage_sex <- participants %>%
   select(openhdsindividualId)
 write.table(missingage_sex, "missingage_sex.txt")
 
+# keep only variables of interest
+participants_simplified <- participants %>%
+  select(openhdsindividualId, sex, age, dob, agegr, linguasportugues1, ecestado_civil, trabtrabalho, SesScoreQnt, empsituacao_emprego, ednivel_educacao, drugshiv, drugscancer, drugsdiabet, drugshypertension, drugschronic_kidney_disease, drugschronic_lung_disease) 
+# more variables to add here, but it would be easier from a dataframe with strings instead of numbers for factor variables
+
 # F3 weight & height
 F3 <- read_excel("database/20220323/F3.xlsx")
 # Check if duplicated rows (i.e. same index and same HRC)
@@ -94,16 +100,23 @@ dups = which(duplicated(F3%>%select(openhdsindividualId, measurementsheight, mea
 length(dups)
 # Remove duplicated rows
 F3 = F3 %>% filter(!row.names(F3) %in% dups)
+# make a dataset that combines observations of weight, height and MUAC during different visits (if weight is collected during a different visit than height)
 F3_weightheightcombined <- F3 %>%
   filter(measurementswas_weighed==1|measurementswas_arm_circumferen==1|measurementswas_height_measured==1)%>%
   group_by(openhdsindividualId) %>%
   summarize(weight=mean(measurementsweight), height=mean(measurementsheight), MUAC=mean(measurementsarm_circumference))
 hist(F3_weightheightcombined$weight)
 hist(F3_weightheightcombined$height)
+# BMI
+F3_weightheightcombined$BMI <- round(F3_weightheightcombined$weight/((F3_weightheightcombined$height/100)^2),1)
 
 # merge participant baseline data and weight and height
-participants <- merge(participants, F3_weightheightcombined, by = "openhdsindividualId", all.x = T) # only 3684 out of 6807
-
+participants <- merge(participants_simplified, F3_weightheightcombined, by = "openhdsindividualId", all.x = T) # only 3684 out of 6807
+# identify those with weight and height that doesn't make sense
+list_weight_height_problems <- participants %>%
+  filter((BMI<10|BMI>35) & age>4) %>%
+  select(openhdsindividualId, sex, age, weight, height, BMI, MUAC)
+write.table(list_weight_height_problems, file = "list_weight_height_problems.txt")
 
 # F5 possible cases
 # F5_v1 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F5_Possivel_caso_v1_0.csv")
@@ -187,14 +200,32 @@ length(dups)
 F2 <- F2 %>% filter(!row.names(F2) %in% dups) # n=9959
 # check how often symptomatic cases were reported in the HH
 table(F2$exposure_symptomsrespiratory_sy) # 407 HH visits with (at least one) episode reported
+# format date of symptom onset
+F2$datacolheita <- as.Date(F2$history_symptoms_date_colected_)
+F2$datacolheita[is.na(F2$datacolheita)] <- as.Date(F2$history_symptomsdate_colected[is.na(F2$datacolheita)])
+table(F2$datacolheita, useNA = "always")
+F2$datesymptomonset <- as.Date(F2$history_symptoms_symptoms_date_)
+table(F2$datesymptomonset, useNA = "always")
 # individual HH member part (episodes of illness)
 F2episodes <- read_excel("database/20220323/F2_symptoms.xlsx")
 # Check if duplicated rows (i.e. same index and same HRC)
 dups = which(duplicated(F2episodes%>%select(history_symptoms_individualID_r, KEY)))
 length(dups)
 # Remove duplicated rows
-F2episodes <- F2episodes %>% filter(!row.names(F2episodes) %in% dups) # only n=106 remaining, something must have gone wrong
+F2episodes <- F2episodes %>% filter(!row.names(F2episodes) %in% dups) # only n=106 remaining, something must have gone wrong during data collection CHECK
 
+# merge HH visit data with episodes
+F2_mergedepisodes <- merge(F2, F2episodes, by = "KEY", all = T)
+
+# link active surveillance visits and possible cases
+# create unique variable for the HH during that visit
+F2$HH_datacolheita <- NA
+F2$HH_datacolheita[!is.na(F2$openhdslocationId)&!is.na(F2$datacolheita)] <- paste(F2$openhdslocationId[!is.na(F2$openhdslocationId)&!is.na(F2$datacolheita)],"_",F2$datacolheita[!is.na(F2$openhdslocationId)&!is.na(F2$datacolheita)])
+# create unique var for the HH where a sample is collected
+possiblecases_participants$HH_datacolheita <- NA
+possiblecases_participants$HH_datacolheita[!is.na(possiblecases_participants$openhds.locationId)&!is.na(possiblecases_participants$datacolheita.x)] <- paste(possiblecases_participants$openhds.locationId[!is.na(possiblecases_participants$openhds.locationId)&!is.na(possiblecases_participants$datacolheita.x)],"_",possiblecases_participants$datacolheita.x[!is.na(possiblecases_participants$openhds.locationId)&!is.na(possiblecases_participants$datacolheita.x)] )
+# merge both, removing possible cases not directly linked to a visit (CHECK)
+activesurveillance <- merge(F2, possiblecases_participants, by = "HH_datacolheita", all.x = T)
 
 
 
@@ -220,43 +251,85 @@ length(dups)
 # Remove duplicated rows
 F4 = F4 %>% filter(!row.names(F4) %in% dups)
 
-F4 <- read_excel("database/Africover DB 14062021/F4_unlocked.xlsx") # up to June 14
-F4$openhdsindividualId <- F4$`Id do individuo`
-# <- F4$`openhds:individualId`
-F4$data_da_colheita <- as.Date(F4$`sample_confirm:sample_collection_date`, "%b %d, %Y")
+# Import DBS results
+# DBS results (do not contain data de colheita, which we will have to add afterwards)
+DBSresults <- read_excel("database/20220323/DBSresults220318.xlsx", 
+                         sheet = "All Data Info.")
+# remove rows of control panel results (as raw values have already been interpreted by Joachim)
+DBSresults <- subset(DBSresults, participantsample==1)
+# remove other variables
+DBSresults <- DBSresults %>% select(participantID, plate, Result)
+# summarize how many samples per participant
+summary_participants <- DBSresults %>%
+  group_by(participantID) %>%
+  summarize(n=n())
+table(summary_participants$n)
 
-# F4$roundodk[F4$`confirmacao:sero_survey`==0] <- "M0"
-# F4$roundodk[F4$`confirmacao:sero_survey`==1] <- "M3"
-# F4$roundodk[F4$`confirmacao:sero_survey`==2] <- "M6"
-F4$roundodk <- F4$`Visita serovigilancia n`
-
-F5 <- read_excel("database/Africover DB 30062021/AfriCoVER_F5_Possivel_caso_v3_0_results.xls")
-F5$openhdsindividualId <- F5$`openhds:individualId`
-F5$data_da_colheita <- as.Date(F5$`questions:nasal_swab_data:nasal_swab_date`)
+# count which occurrence it is of the participant
+DBSresults$v1 <- 1
+DBSresults$seq <- ave(DBSresults$v1, DBSresults$participantID, FUN = seq_along)
 
 
-
-# Import lab database
-# DBS inventory
+# DBS inventory - for the first 6 months of the study (until 30 June)
 DBS_inventario_INS <- read_excel("database/Africover lab DB 05072021/africover_inventario_DBS_210704.xlsx", 
                                  sheet = "Sheet1", col_types = c("text", "text", "text", "text", "text", "text", 
                                                                          "date", "text", "text", "text", "date", "numeric", "date"))
-colnames(DBS_inventario_INS) <- c("box","ziplock","study","studyname","openhdsindividualId", "samplename","data_da_colheita_excelformat","sampletype","geolocation","province","data_congelacao","n_defrosts", "data_da_colheita", "month")
-DBS_inventario_INS$data_da_colheita <- as.Date(DBS_inventario_INS$data_da_colheita)
+colnames(DBS_inventario_INS) <- c("box","ziplocknr","study","studyname","openhdsindividualId", "samplename","data_da_colheita_excelformat","sampletype","geolocation","province","data_congelacao","n_defrosts", "data_da_colheita")
+DBS_inventario_INS$datacolheita <- as.Date(DBS_inventario_INS$data_da_colheita)
 table(DBS_inventario_INS$data_da_colheita, useNA = "always") # 24 NA's
-
 # remove duplicate entries
 dupslab = which(duplicated(DBS_inventario_INS%>%select(openhdsindividualId,data_da_colheita)))
 length(dupslab)
 # Remove duplicated rows
-DBS_inventario_INS_nodups = DBS_inventario_INS %>% filter(!row.names(DBS_inventario_INS) %in% dupslab)
+DBS_inventario_INS <- DBS_inventario_INS %>% filter(!row.names(DBS_inventario_INS) %in% dupslab)
+# remove unnecessary variables
+DBS_inventario_INS <- DBS_inventario_INS %>% select(openhdsindividualId, ziplocknr, datacolheita)
+
+# DBS seguimento das amostras - for the second 6 months of the study (from 1 July)
+DBSfollowup <- read_excel("database/20220323/Seguimento das amostras Africover.xlsx", 
+                          sheet = "DBS")
+DBSfollowup$`Data de colheita`[DBSfollowup$`Data de colheita`=="4-Sep-2021\r\n"] <- "4-Sep-2021"
+DBSfollowup$`Data de colheita`<- tolower(DBSfollowup$`Data de colheita`)
+DBSfollowup$datacolheita <- NA
+DBSfollowup$datacolheita[grepl("44", DBSfollowup$`Data de colheita`)==TRUE] <- DBSfollowup$`Data de colheita`[grepl("44", DBSfollowup$`Data de colheita`)==TRUE]
+DBSfollowup$datacolheita <- as.numeric(DBSfollowup$datacolheita)
+DBSfollowup$datacolheita <- as.Date(DBSfollowup$datacolheita, origin = "1899-12-30")
+DBSfollowup$datacolheita[grepl("44", DBSfollowup$`Data de colheita`)==F] <- as.Date(DBSfollowup$`Data de colheita`[grepl("44", DBSfollowup$`Data de colheita`)==F], "%d-%b-%Y")
+# it did not recognize "oct", so I changed manually in the excel file
+# 2 dates were not converted to date format, so changing manually
+DBSfollowup$datacolheita[DBSfollowup$`Data de colheita`=="13/10/2021"] <- "2021-10-13"
+DBSfollowup$datacolheita[DBSfollowup$`Data de colheita`=="27/10/2021"] <- "2021-10-27"
+# remove unnecessary variables and rename remaining vars
+colnames(DBSfollowup) <- c("datacolheita_old", "openhdsindividualId", "dob", "id_origin", "id_correct", "shippingdate","comments","reception_date", "comments2","box","ziplocknr","storagedate","unfrozen_n","blank","datacolheita")
+DBSfollowup <- DBSfollowup %>% select(openhdsindividualId, dob, ziplocknr, datacolheita)
+
+# combine DBS inventory and DBS follow-up to have a single list of participant IDs with dates of sample collection
+DBS_inventario_INS$dob <- NA
+DBSlist <- rbind(DBS_inventario_INS,DBSfollowup)
+
+# remove depulicates (in both databases) - checked by having one of the two below combinations
+dups = which(duplicated(DBSlist%>%select(openhdsindividualId,datacolheita)))
+length(dups)
+DBSlist <- DBSlist %>% filter(!row.names(DBSlist) %in% dups)
+dups2 = which(duplicated(DBSlist%>%select(openhdsindividualId,ziplocknr)))
+length(dups2)
+DBSlist <- DBSlist %>% filter(!row.names(DBSlist) %in% dups2)
+
+
+# link DBS results to dates
+DBSresults <- merge(DBSresults, DBSlist, by.x = "participantID", by.y = "openhdsindividualId", all.x = T)
+
+# export to check
+write.table(DBSresults, file = "DBSresults.txt")
+
+
 
 # Merge odk and lab databases based on ID and date of collection
-serosurveymerged <- merge(DBS_inventario_INS_nodups, F4_nodups, by = c("openhdsindividualId","data_da_colheita"), all.x = T) # only keeping the samples in the lab though
+serosurveymerged <- merge(DBS_inventario_INS_nodups, F4, by = c("openhdsindividualId","data_da_colheita"), all.x = T) # only keeping the samples in the lab though
 serosurveymerged_short <- subset(serosurveymerged, select = c("openhdsindividualId", "data_da_colheita", "roundodk"))
 
 # Merge date of birth with merged odk-lab db
-serosurveymerged_short_demographics <- merge(serosurveymerged_short, baseline_demographics, by = "openhdsindividualId", all.x = T)
+serosurveymerged_short_demographics <- merge(serosurveymerged_short, participants, by = "openhdsindividualId", all.x = T)
 # export list
 write.csv(serosurveymerged_short_demographics, "serosurveymerged_short.csv")
 
