@@ -28,9 +28,16 @@ DBS <- read.csv("DBS.csv")
 participants_simplified <- read.csv("participants_simplified.csv")
 
 #### 1. CHARACTERISTICS SERO-SURVEY PARTICIPANTS ####
+# frequency table of agegroups
+agegroup_table <- table(participants_simplified$agegr)
+prop.table(agegroup_table)
 
+# frequency table of sex
+sex_table <- table(participants_simplified$sex)
+prop.table(sex_table)
 
 #### 2. SERO-PREVALENCE ####
+
 
 #### 3. RISK FACTORS OF INFECTION UP TO 30 June ####
 # limit to M0 and M3 rounds (which have complete data) -> removing samples collected after 30 June, or which were the third or fourth consecutive sample of a patient
