@@ -51,6 +51,7 @@ F1b$start <- as.Date(F1b$start)
 # Check if duplicated rows (i.e. same index and same HRC)
 dups = which(duplicated(F1b%>%select(openhdsindividualId, is_consent_signed, exposuremass_bus, drugssmoking)))
 length(dups)
+# STILL NEED TO REMOVE OBSERVATIONS FROM PARTICIPANTS WHO INITIALLY REFUSED TO PARTICIPATE, BUT LATER WERE APPROACHED AGAIN AND THEN A FORM WAS COMPLETED
 # Remove duplicated rows
 F1b = F1b %>% filter(!row.names(F1b) %in% dups)
 # merge F1a & F1b
