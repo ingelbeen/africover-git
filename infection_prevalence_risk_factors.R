@@ -28,7 +28,8 @@ DBS <- read.csv("DBS.csv")
 participants_simplified <- read.csv("participants_simplified.csv")
 
 #### 1. CHARACTERISTICS SERO-SURVEY PARTICIPANTS ####
-# frequency table of agegroups
+# frequency table of agegroups 
+# ATTENTION: participant database contains all study participants, not only of sero-survey
 agegroup_table <- table(participants_simplified$agegr)
 prop.table(agegroup_table)
 
