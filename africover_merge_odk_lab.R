@@ -6,8 +6,9 @@
 # install/load packages
 pacman::p_load(readxl,dplyr,lubridate, ggplot2, usethis)
 
+#### 1. DEMOGRAPHIC DATA ####
 # Import demographic data
-demographics <- read_excel("database/Demographics_database_unlocked.xlsx", sheet = "Sheet1")
+demographics <- read_excel("database/Demographics_database_unlocked.xlsx", sheet = "Sheet1") # no duplicates (checked)
 demographics$dob <- as.Date(demographics$DOB, "%m/%d/%Y")
 dob <- subset(demographics, select = c("openhdsindividualId","DOB", "GENDER"))
 baseline_demographics <- read_excel("database/Baseline_demographics.xlsx")
@@ -16,8 +17,11 @@ baseline_demographics$dob <- as.Date(baseline_demographics$`individualInfo:dateO
 baseline_demographics$GENDER <- baseline_demographics$`individualInfo:gender` 
 baseline_demographics <- baseline_demographics %>%
   select(openhdsindividualId, dob, GENDER)
+# Remove duplicated rows
+dups = which(duplicated(baseline_demographics%>%select(openhdsindividualId, dob))) # CHECK - same participantID, different dob
+baseline_demographics = baseline_demographics %>% filter(!row.names(baseline_demographics) %in% dups)
 
-# Import latest ODK datasets
+#### 2. BASELINE AFRICOVER DATA ####
 # F1 baseline
 # household data
 F1a <- read_excel("database/20220323/F1a.xlsx")
@@ -118,7 +122,17 @@ list_weight_height_problems <- participants %>%
   select(openhdsindividualId, sex, age, weight, height, BMI, MUAC)
 write.table(list_weight_height_problems, file = "list_weight_height_problems.txt")
 
-# F5 possible cases
+# Check if duplicated rows (i.e. same index and same HRC)
+dups = which(duplicated(participants_simplified%>%select(openhdsindividualId)))
+length(dups)
+# Remove duplicated rows
+participants_simplified = participants_simplified %>% filter(!row.names(participants_simplified) %in% dups)
+
+# export participant database FOR NOW SIMPLIFIED WITHOUT F3 - SHOULD BE CHANGED LATER ON
+write.csv(participants_simplified, file = "participants_simplified.csv")
+
+#### 3. ACTIVE SURVEILLANCE FOR POSSIBLE CASES ####
+## 3.1 ODK possible case reports
 # F5_v1 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F5_Possivel_caso_v1_0.csv")
 # F5_v2 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F5_Possivel_caso_v2_0.csv")
 # F5 <- rbind(F5_v1, F5_v2)
@@ -132,7 +146,7 @@ F5 = F5 %>% filter(!row.names(F5) %in% dups)
 F5$datacolheita <- as.Date(F5$`nasal_swab_data-nasal_swab_date`) # 64 no sample collection date, in most cases because tested at hospital
 table(F5$`nasal_swab_data-specify_reason_for_not_sampling`)
 
-# nasal swab lab results
+## 3.2 nasal swab lab results
 nasalswabresults <- read_excel("database/completed 20220420/AfriCoVER_nasalswabresults_20220420.xlsx", sheet = "Detalhes dos Resultados ", 
                                  col_types = c("text", "text", "text", "text", "date", "date", "numeric", "text", "date", "text", "date", "date", 
                                                "text", "text", "text", "date", "text", "text"))
@@ -140,7 +154,7 @@ hist(nasalswabresults$datacolheita, breaks = 20)
 nasalswabresults$datacolheita <- as.Date(nasalswabresults$datacolheita)
 nasalswabresults$openhdsindividualId <- nasalswabresults$`Member ID`
 
-# merge lab results and ODK F4
+## 3.3 merge lab results and ODK F4
 # clean observations to match between both db
 F5$datacolheita[F5$`openhds-individualId`=="QU0QM1004005"] <- "2022-02-01" #date missing in F5
 nasalswabresults$openhdsindividualId[nasalswabresults$openhdsindividualId=="QU2CS3002006"&nasalswabresults$datacolheita=="2021-01-13"] <- "QU2CS3002005" #found in F5 HH member swabbed the previous day
@@ -190,7 +204,7 @@ possiblecases_participants <- merge(possiblecases, participants, by = "openhdsin
 # export database
 write.csv(possiblecases_participants, file = "possiblecases_participants.csv")
 
-# F2 active surveillance follow-up
+## 3.4 F2 active surveillance follow-up
 # household part
 F2 <- read_excel("database/20220323/F2.xlsx")
 # Check if duplicated rows (i.e. same index and same HRC)
@@ -228,7 +242,7 @@ possiblecases_participants$HH_datacolheita[!is.na(possiblecases_participants$ope
 activesurveillance <- merge(F2, possiblecases_participants, by = "HH_datacolheita", all.x = T)
 
 
-
+#### 4. SEROSURVEILLANCE ####
 # F4 serosurveys
 # F4_v1 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F4_Serovigilancia_v1_0.csv")
 # F4_v2 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F4_Serovigilancia_v2_0.csv")
@@ -259,16 +273,23 @@ DBSresults <- read_excel("database/20220323/DBSresults220318.xlsx",
 DBSresults <- subset(DBSresults, participantsample==1)
 # remove other variables
 DBSresults <- DBSresults %>% select(participantID, plate, Result)
+# Check if duplicated rows (i.e. same index and same HRC)
+dups = which(duplicated(DBSresults%>%select(participantID, plate, Result)))
+length(dups)
+# Remove duplicated rows
+DBSresults <- DBSresults %>% filter(!row.names(DBSresults) %in% dups) 
+# remove capital letters in results
+DBSresults$Result <- tolower(DBSresults$Result)
+# count which occurrence it is of the participant
+DBSresults$v1 <- 1
+DBSresults$seq <- ave(DBSresults$v1, DBSresults$participantID, FUN = seq_along)
+DBSresults <- subset(DBSresults, select = c(-v1))
+
 # summarize how many samples per participant
 summary_participants <- DBSresults %>%
   group_by(participantID) %>%
   summarize(n=n())
 table(summary_participants$n)
-
-# count which occurrence it is of the participant
-DBSresults$v1 <- 1
-DBSresults$seq <- ave(DBSresults$v1, DBSresults$participantID, FUN = seq_along)
-
 
 # DBS inventory - for the first 6 months of the study (until 30 June)
 DBS_inventario_INS <- read_excel("database/Africover lab DB 05072021/africover_inventario_DBS_210704.xlsx", 
@@ -277,15 +298,20 @@ DBS_inventario_INS <- read_excel("database/Africover lab DB 05072021/africover_i
 colnames(DBS_inventario_INS) <- c("box","ziplocknr","study","studyname","openhdsindividualId", "samplename","data_da_colheita_excelformat","sampletype","geolocation","province","data_congelacao","n_defrosts", "data_da_colheita")
 DBS_inventario_INS$datacolheita <- as.Date(DBS_inventario_INS$data_da_colheita)
 table(DBS_inventario_INS$data_da_colheita, useNA = "always") # 24 NA's
+# mistakes in IDs
+DBS_inventario_INS$openhdsindividualId[DBS_inventario_INS$openhdsindividualId=="QLNM3006002"] <- "QULNM3006002"
+DBS_inventario_INS$openhdsindividualId[DBS_inventario_INS$openhdsindividualId=="UNMU1001001"] <- "QUJNM1001001"
 # remove duplicate entries
-dupslab = which(duplicated(DBS_inventario_INS%>%select(openhdsindividualId,data_da_colheita)))
+dupslab = which(duplicated(DBS_inventario_INS%>%filter(!is.na(datacolheita))%>%select(openhdsindividualId,data_da_colheita)))
 length(dupslab)
 # Remove duplicated rows
 DBS_inventario_INS <- DBS_inventario_INS %>% filter(!row.names(DBS_inventario_INS) %in% dupslab)
 # remove unnecessary variables
 DBS_inventario_INS <- DBS_inventario_INS %>% select(openhdsindividualId, ziplocknr, datacolheita)
+# limit to 28 June (from 29 June in DBS follow-up file)
+DBS_inventario_INS <- DBS_inventario_INS %>% filter(!is.na(datacolheita)&datacolheita<"2021-06-30") # only missing after 30 June
 
-# DBS seguimento das amostras - for the second 6 months of the study (from 1 July)
+# DBS seguimento das amostras - for the second half of the study (from 29 July)
 DBSfollowup <- read_excel("database/20220323/Seguimento das amostras Africover.xlsx", 
                           sheet = "DBS")
 DBSfollowup$`Data de colheita`[DBSfollowup$`Data de colheita`=="4-Sep-2021\r\n"] <- "4-Sep-2021"
@@ -300,27 +326,39 @@ DBSfollowup$datacolheita[grepl("44", DBSfollowup$`Data de colheita`)==F] <- as.D
 DBSfollowup$datacolheita[DBSfollowup$`Data de colheita`=="13/10/2021"] <- "2021-10-13"
 DBSfollowup$datacolheita[DBSfollowup$`Data de colheita`=="27/10/2021"] <- "2021-10-27"
 # remove unnecessary variables and rename remaining vars
-colnames(DBSfollowup) <- c("datacolheita_old", "openhdsindividualId", "dob", "id_origin", "id_correct", "shippingdate","comments","reception_date", "comments2","box","ziplocknr","storagedate","unfrozen_n","blank","datacolheita")
+colnames(DBSfollowup) <- c("datacolheita_old", "participantID_ODK", "dob", "id_origin", "id_correct", "shippingdate","openhdsindividualId","reception_date", "comments2","box","ziplocknr","storagedate","unfrozen_n","blank","datacolheita")
 DBSfollowup <- DBSfollowup %>% select(openhdsindividualId, dob, ziplocknr, datacolheita)
+# remove duplicate rows
+dups = which(duplicated(DBSfollowup%>%filter(!is.na(datacolheita))%>%select(openhdsindividualId,datacolheita)))
+length(dups)
+DBSfollowup <- DBSfollowup %>% filter(!row.names(DBSfollowup) %in% dups)
+# remove samples that were in ODK but lab didn't receive
+DBSfollowup$openhdsindividualId[grepl("RECEBI", DBSfollowup$openhdsindividualId)==TRUE] <- NA
+DBSfollowup$openhdsindividualId[grepl("DUPLIC", DBSfollowup$openhdsindividualId)==TRUE] <- NA
+DBSfollowup <- subset(DBSfollowup, !is.na(DBSfollowup$openhdsindividualId))
+
 
 # combine DBS inventory and DBS follow-up to have a single list of participant IDs with dates of sample collection
 DBS_inventario_INS$dob <- NA
 DBSlist <- rbind(DBS_inventario_INS,DBSfollowup)
 
-# remove depulicates (in both databases) - checked by having one of the two below combinations
-dups = which(duplicated(DBSlist%>%select(openhdsindividualId,datacolheita)))
-length(dups)
-DBSlist <- DBSlist %>% filter(!row.names(DBSlist) %in% dups)
-dups2 = which(duplicated(DBSlist%>%select(openhdsindividualId,ziplocknr)))
-length(dups2)
-DBSlist <- DBSlist %>% filter(!row.names(DBSlist) %in% dups2)
-
+# count the how many-th sample it is of a single participant
+DBSlist$v1 <- 1
+DBSlist$seq <- ave(DBSlist$v1, DBSlist$openhdsindividualId, FUN = seq_along)
+DBSlist <- subset(DBSlist, select = c(-v1))
 
 # link DBS results to dates
-DBSresults <- merge(DBSresults, DBSlist, by.x = "participantID", by.y = "openhdsindividualId", all.x = T)
+DBSresults$sampleID <- paste(DBSresults$participantID,"-",DBSresults$seq)
+DBSlist$sampleID <- paste(DBSlist$openhdsindividualId,"-",DBSlist$seq)
+DBS <- merge(DBSresults, DBSlist, by = "sampleID", all = T)
+
+# clean codes which aren't matching
+
+
 
 # export to check
-write.table(DBSresults, file = "DBSresults.txt")
+write.table(DBS, file = "DBS.txt")
+write.csv(DBS, file = "DBS.csv")
 
 
 
