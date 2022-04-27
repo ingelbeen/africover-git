@@ -29,10 +29,10 @@ Secondary Objectives
 An existing Luminex platform was used to test dried blood spots (DBS) collected within the sero-survey rounds.
 
 ## Study participants
-Number of households in the active surveillance component (biweekly visits to detect possible Covid-19 cases): 
-Number of individuals in the active surveillance component (biweekly visits to detect possible Covid-19 cases): 
-Number of individuals in the repeated sero-survey (with >/=1 DBS collected):
-Number of individuals in the social mixing survey:
+- Number of households in the active surveillance component (biweekly visits to detect possible Covid-19 cases): 
+- Number of individuals in the active surveillance component (biweekly visits to detect possible Covid-19 cases): 
+- Number of individuals in the repeated sero-survey (with >/=1 DBS collected):
+- Number of individuals in the social mixing survey:
 
 ## Databases
 - participant demographic data (from HDSS)
