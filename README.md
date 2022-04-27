@@ -19,11 +19,13 @@ Primary Objectives
 •	Estimate the proportion of infections that are asymptomatic, and tease out the role these play in transmission
 •	Estimate the incidence rate of infection, disease, hospitalization and mortality, over a 12 month period
 •	Validate a high-throughput serologic Luminex SARS-CoV-2 serology assay and compare its performance to that of  two validated commercially available serologic assays in sSA
+
 Secondary Objectives
 •	Identify risk factors for infection and for asymptomatic or clinical presentation,
 •	Validate the use of dried blood spots in SARS-CoV-2 serologic surveys
 •	Measure antibody titers over time and analyze the correlation between anti-coronavirus (endemic coronavirus or SARS-CoV-2) antibody titers and reinfection 
 •	Assess the individual and community uptake of measures aimed to reduce transmission and assess barriers to uptake and effect on transmission.
+
 An existing Luminex platform was used to test dried blood spots (DBS) collected within the sero-survey rounds.
 
 ## Study participants
