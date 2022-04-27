@@ -13,7 +13,9 @@ Utrecht University Medical Centre, The Netherlands (PI Mirjam Kretzschmar)
 Household data and sample collection: 15/12/2020 to 15/01/2022 (with data completion until 30/04/2022)
 
 Project summary: 
+
 Approach: We conducted population-based surveillance in a Demographic Health Surveillance System (HDSS) of 16,500 people in a peri-urban neighbourhood of Maputo, Mozambique. We collected clinical information and respiratory specimens from ill persons during biweekly household visits and complement with data from local clinics.  We conducted a serosurvey of a random selection of 1450 persons (<18, 18-50y, 50+) at baseline, 3, 6 and 12 months. 
+
 Primary Objectives
 •	Estimate the attack rate, secondary infection rate, serial interval, and the basic reproduction number of SARS-CoV-2 infection in peri-urban Maputo
 •	Estimate the proportion of infections that are asymptomatic, and tease out the role these play in transmission
