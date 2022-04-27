@@ -30,7 +30,7 @@ participants_simplified <- read.csv("participants_simplified.csv")
 #### 1. CHARACTERISTICS SERO-SURVEY PARTICIPANTS ####
 # frequency table of agegroups
 agegroup_table <- table(participants_simplified$agegr)
-prop.table(agegroup_table)
+round(prop.table(agegroup_table),2)*100
 
 # frequency table of sex
 sex_table <- table(participants_simplified$sex)
