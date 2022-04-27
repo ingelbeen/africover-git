@@ -3,7 +3,7 @@
 Clinicaltrials.gov: NCT04442165
 
 ## Participating Organisations:
-Instituut voor Tropische Geneeskunde (ITM), Belgium (PI Marc-Alain Widdowson) 
+Instituut voor Tropische Geneeskunde (ITM), Belgium (PI Marc-Alain Widdowson)
 Instituto Nacional de Saúde (INS), Mozambique (PI Ivalda Macicame)
 Institut de Recherche pour le Développement (IRD), France (PI Martine Peeters)
 Utrecht University Medical Centre, The Netherlands (PI Mirjam Kretzschmar) 
