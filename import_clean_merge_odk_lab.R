@@ -2,6 +2,7 @@
 # AFRICOVER                                                                 #
 # Script to merge ODK and lab databases                                     #
 #############################################################################
+# contributors: Catildo, Nilzio, Brecht
 
 # install/load packages
 pacman::p_load(readxl,dplyr,lubridate, ggplot2, usethis)
