@@ -35,6 +35,7 @@ round(prop.table(agegroup_table),2)*100
 
 # frequency table of sex
 sex_table <- table(participants_simplified$sex)
+sex_table
 prop.table(sex_table)
 
 #### 2. SERO-PREVALENCE ####

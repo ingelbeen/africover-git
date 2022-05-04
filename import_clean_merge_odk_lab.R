@@ -1,6 +1,6 @@
 #############################################################################
 # AFRICOVER                                                                 #
-# Script to merge ODK and lab databases                                     #
+# Script to import, clean and merge ODK, HDSS demographic, and lab databases#
 #############################################################################
 # contributors: Catildo, Nilzio, Brecht
 
@@ -241,37 +241,138 @@ F2$HH_datacolheita[!is.na(F2$openhdslocationId)&!is.na(F2$datacolheita)] <- past
 possiblecases_participants$HH_datacolheita <- NA
 possiblecases_participants$HH_datacolheita[!is.na(possiblecases_participants$openhds.locationId)&!is.na(possiblecases_participants$datacolheita.x)] <- paste(possiblecases_participants$openhds.locationId[!is.na(possiblecases_participants$openhds.locationId)&!is.na(possiblecases_participants$datacolheita.x)],"_",possiblecases_participants$datacolheita.x[!is.na(possiblecases_participants$openhds.locationId)&!is.na(possiblecases_participants$datacolheita.x)] )
 # merge both, removing possible cases not directly linked to a visit (CHECK)
-activesurveillance <- merge(F2, possiblecases_participants, by = "HH_datacolheita", all.x = T)
+# activesurveillance <- merge(F2, possiblecases_participants, by = "HH_datacolheita", all.x = T) SOMETHING WRONG HERE. R CRASHES
 
 
 #### 4. SEROSURVEILLANCE ####
-# F4 serosurveys
-# F4_v1 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F4_Serovigilancia_v1_0.csv")
-# F4_v2 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F4_Serovigilancia_v2_0.csv")
-# F4 <- rbind(F4_v1, F4_v2)
-# # change format variable date 
-# F4$data_colheita <- as.Date(F4$sample_collection_date, "%b %d, %Y")
-F4 <- read_excel("database/20220323/F4.xlsx")
-F4$data_colheita <- as.Date(F4$sample_confirmsample_collection)
-F4$data_formulario <- as.Date(F4$start)
-# check dates that don't make sense and replace collection date with questionnaire start date
-F4$data_colheita[F4$data_colheita=="2020-03-07"] <- "2021-06-18"
-F4$time_F_to_collection <- F4$data_colheita - F4$data_formulario
-table(F4$time_F_to_collection)
-# F4$data_colheita[(F4$time_F_to_collection*-1)>20] <- F4$data_formulario[(F4$time_F_to_collection*-1)>20]
+# we will start from the samples, as for some samples, an ODK entry is missing, or ODK entries exit for which no sample can be found
+## 4.1. import two DBS inventory files ##
+## import file of the first 6 months of the study (15 Dec 20 to 28 June 21)
+DBSdec20jun21 <- read_excel("database/Africover lab DB 05072021/africover_inventario_DBS_210704.xlsx", 
+                                 sheet = "Sheet1", col_types = c("text", "text", "text", "text", "text", "text", 
+                                                                 "date", "text", "text", "text", "date", "numeric", "date"))
+# rename variables
+colnames(DBSdec20jun21) <- c("box","ziplocknr","study","studyname","openhdsindividualId", "samplename","data_da_colheita_excelformat","sampletype","geolocation","province","data_congelacao","n_defrosts", "data_da_colheita")
+# format date of collection as dates
+DBSdec20jun21$datacolheita <- as.Date(DBSdec20jun21$data_da_colheita)
+# mistakes in IDs -> checked inconsistencies manually in the paper forms
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QLNM3006002"] <- "QULNM3006002"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="UNMU1001001"] <- "QUJNM1001001"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU0GT1001002" & DBSdec20jun21$datacolheita=="2021-05-10"] <- "QU0GJ1001002"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU0GT1001009" & DBSdec20jun21$datacolheita=="2021-05-12"] <- "QU0GJ1001009"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU1NM1007002" & DBSdec20jun21$datacolheita=="2021-06-28"] <- "QU1NM1007002"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU1NM400801" & DBSdec20jun21$datacolheita=="2020-12-22"] <- "QU1NM4008001"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU1QM2038004" & DBSdec20jun21$datacolheita=="2021-01-05"] <- "QUIQM2038004"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU2GT1006001" & DBSdec20jun21$datacolheita=="2021-01-04"] <- NA # not found in the paper forms
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU3QM102202" & DBSdec20jun21$datacolheita=="2020-12-22"] <- "QU3QM1022002"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU4C10070010" & DBSdec20jun21$datacolheita=="2021-01-06"] <- "QU4PC1007010"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU5GT1003004"] <- "QU5GJ1003004"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU7M1029001"] <- "QU7QM1029001"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU7MU139001"] <- "QU7MU1039001"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU7NM4004013" & DBSdec20jun21$datacolheita=="2021-02-08"] <- "QU7NM4001013"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU7NM404002"] <- "QU7NM4046002"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUACS3010001"] <- "QU4CS3010001"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUCP1006004"] <- "QUCPC1006004"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUENM1028001" & DBSdec20jun21$datacolheita=="2021-01-21"] <- "QUENM2002001"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUEQM1012001"] <- "QUEQM1002001"
+# DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUEQM2064001" & DBSdec20jun21$datacolheita=="2021-01-15"] <- "QUEQM2014001" I can't retrace this one
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUEQM2077002" & DBSdec20jun21$datacolheita=="2021-02-10"] <- "QUFQM2077002"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUFAM2023009"] <- "QUFAM2032009"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUFM20970110" & DBSdec20jun21$datacolheita=="2021-01-11"] <- "QUFQM2097011"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUFNM1002007" & DBSdec20jun21$datacolheita=="2021-05-26"] <- "QUFNM2002007"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUFNM129005"] <- "QUFNM1029005"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUFQM1097001"] <- "QUFQM2097001"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUGQM4011002"] <- "QUGQM2011002"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUHM2053002"] <- "QUHQM2053002"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUHQM2012001" & DBSdec20jun21$datacolheita=="2021-01-06"] <- "QUHQM1012001"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUHUM1012001"] <- "QUHMU1012001"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUICS3001013"] <- "QU1CS3001013"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUKAM1008006"] <- "QUKAM1008005"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QULAM203310"] <- "QULAM2033010"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QULG1028004"] <- "QULGJ1028004"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QULG51006008"] <- "QULGJ1006008"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QULMU100602"] <- "QULMU1006002"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUMCS2001006" & DBSdec20jun21$datacolheita=="2021-04-21"] <- "QUMCS3001006"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUMCS2003001" & DBSdec20jun21$datacolheita=="2021-04-21"] <- "QUMCS3003001"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUMCS301107"] <- "QUMCS3011007"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUMM1002005"] <- "QUMMU1002005"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUNM1003002"] <- "QUNMU1003002"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUOGJ1003009" & DBSdec20jun21$datacolheita=="2021-01-13"] <- "QU0GJ1003009"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QURT10210033"] <- "QU5RT1021003"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUSAM2044003"] <- "QU5AM2044003"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUSCS3002004"] <- "QU5CS3002004"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUSCS3038006"] <- "QU5CS3038006"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUZGJ1005003" & DBSdec20jun21$datacolheita=="2021-02-18"] <- "QU7GJ1005003"
+DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="UNMU1001001"] <- "QUNMU1001001"
+# missing dates -> looked up in F4
+DBSdec20jun21$datacolheita[DBSdec20jun21$openhdsindividualId=="QU5PC1039002" & is.na(DBSdec20jun21$datacolheita)] <- "2021-03-04"
+DBSdec20jun21$datacolheita[DBSdec20jun21$openhdsindividualId=="QU5PC1039003" & is.na(DBSdec20jun21$datacolheita)] <- "2021-03-04"
+DBSdec20jun21$datacolheita[DBSdec20jun21$openhdsindividualId=="QU5PC1039005" & is.na(DBSdec20jun21$datacolheita)] <- "2021-03-04"
+DBSdec20jun21$datacolheita[DBSdec20jun21$openhdsindividualId=="QUMMU1009003" & is.na(DBSdec20jun21$datacolheita)] <- "2021-03-04"
 
-# remove duplicate entries in F4 odk
-# Check if duplicated rows (i.e. same index and same HRC)
-dups = which(duplicated(F4%>%select(openhdsindividualId,data_colheita)))
+# remove duplicate entries
+dups <- which(duplicated(DBSdec20jun21%>%filter(!is.na(datacolheita))%>%select(openhdsindividualId,datacolheita)))
 length(dups)
-# Remove duplicated rows
-F4 = F4 %>% filter(!row.names(F4) %in% dups)
+DBSdec20jun21 <- DBSdec20jun21 %>% filter(!row.names(DBSdec20jun21) %in% dups)
 
-# Import DBS results
+# remove unnecessary variables
+DBSdec20jun21 <- DBSdec20jun21 %>% select(openhdsindividualId, ziplocknr, datacolheita)
+
+# limit to 28 June (from 29 June in DBS follow-up file)
+DBSdec20jun21 <- DBSdec20jun21 %>% filter(!is.na(datacolheita)&datacolheita<"2021-06-29") # only missing after 30 June
+
+## import file of the next 8 months of the study (29 June 21 to 22 Feb 22)
+DBSjun21feb22 <- read_excel("database/20220323/Seguimento das amostras Africover.xlsx", 
+                          sheet = "DBS")
+DBSjun21feb22$`Data de colheita`[DBSjun21feb22$`Data de colheita`=="4-Sep-2021\r\n"] <- "4-Sep-2021"
+DBSjun21feb22$`Data de colheita`<- tolower(DBSjun21feb22$`Data de colheita`)
+DBSjun21feb22$datacolheita <- NA
+DBSjun21feb22$datacolheita[grepl("44", DBSjun21feb22$`Data de colheita`)==TRUE] <- DBSjun21feb22$`Data de colheita`[grepl("44", DBSjun21feb22$`Data de colheita`)==TRUE]
+DBSjun21feb22$datacolheita <- as.numeric(DBSjun21feb22$datacolheita)
+DBSjun21feb22$datacolheita <- as.Date(DBSjun21feb22$datacolheita, origin = "1899-12-30")
+DBSjun21feb22$datacolheita[grepl("44", DBSjun21feb22$`Data de colheita`)==F] <- as.Date(DBSjun21feb22$`Data de colheita`[grepl("44", DBSjun21feb22$`Data de colheita`)==F], "%d-%b-%Y")
+# it did not recognize "oct", so I changed manually in the excel file
+# 2 dates were not converted to date format, so changing manually
+DBSjun21feb22$datacolheita[DBSjun21feb22$`Data de colheita`=="13/10/2021"] <- "2021-10-13"
+DBSjun21feb22$datacolheita[DBSjun21feb22$`Data de colheita`=="27/10/2021"] <- "2021-10-27"
+
+# samples that were reported as not received but were received later
+DBSjun21feb22$Comentários...9[DBSjun21feb22$`ID do participante`=="QUHMU1027005"&DBSjun21feb22$datacolheita=="2021-08-02"] <- "QUHMU1027005"
+DBSjun21feb22$`Data de recepção`[DBSjun21feb22$`ID do participante`=="QUHMU1027005"&DBSjun21feb22$datacolheita=="2021-08-02"] <- "2021-09-14"
+# there is one sample of participantID QU4CS3005005 received on 2021-09-29, which I can't find back, but there is a F4 entry for QU4CS3010001 on that same day, which I can't find in the follow-up. Probably typo.
+# remove the rows without datacolheita 
+DBSjun21feb22 <- subset(DBSjun21feb22, !is.na(DBSjun21feb22$datacolheita))
+
+# rename variables
+colnames(DBSjun21feb22) <- c("datacolheita_old", "participantID_ODK", "dob", "id_origin", "id_correct", "shippingdate","comments","reception_date", "openhdsindividualId","box","ziplocknr","storagedate","unfrozen_n","blank","discrepancies_ID_ODK_&samplereception","datacolheita")
+
+# keep the ODK participantID for those marked as 'not received', in case they still turned up
+DBSjun21feb22$openhdsindividualId[grepl("RECEBI", DBSjun21feb22$openhdsindividualId)==TRUE] <- DBSjun21feb22$participantID_ODK
+# remove the duplicate ODK entries
+DBSjun21feb22 <- subset(DBSjun21feb22, grepl("DUPLIC", DBSjun21feb22$openhdsindividualId)==F)
+# remove unnecessary variables
+DBSjun21feb22 <- DBSjun21feb22 %>% select(openhdsindividualId, dob, ziplocknr, datacolheita)
+
+# remove duplicate rows
+dups = which(duplicated(DBSjun21feb22%>%select(openhdsindividualId,dob,datacolheita)))
+length(dups)
+DBSjun21feb22dups <- DBSjun21feb22 %>% filter(row.names(DBSjun21feb22) %in% dups)
+DBSjun21feb22 <- DBSjun21feb22 %>% filter(!row.names(DBSjun21feb22) %in% dups)
+
+# combine DBSdec20jun21 and DBSjun21feb22 to have a single list of participant IDs with dates of sample collection
+DBSdec20jun21$dob <- NA
+DBSlist <- rbind(DBSdec20jun21,DBSjun21feb22)
+
+# count the how many-th sample it is of a single participant
+DBSlist$v1 <- 1
+DBSlist$seq <- ave(DBSlist$v1, DBSlist$openhdsindividualId, FUN = seq_along)
+DBSlist <- subset(DBSlist, select = c(-v1))
+
+# 4.2. Import DBS results
 # DBS results (do not contain data de colheita, which we will have to add afterwards)
 DBSresults <- read_excel("database/20220323/DBSresults220318.xlsx", 
                          sheet = "All Data Info.")
-# remove rows of control panel results (as raw values have already been interpreted by Joachim)
+# remove rows of control panel results (not needed because the raw values have already been interpreted by Joachim)
 DBSresults <- subset(DBSresults, participantsample==1)
 # remove other variables
 DBSresults <- DBSresults %>% select(participantID, plate, Result)
@@ -293,79 +394,47 @@ summary_participants <- DBSresults %>%
   summarize(n=n())
 table(summary_participants$n)
 
-# DBS inventory - for the first 6 months of the study (until 30 June)
-DBS_inventario_INS <- read_excel("database/Africover lab DB 05072021/africover_inventario_DBS_210704.xlsx", 
-                                 sheet = "Sheet1", col_types = c("text", "text", "text", "text", "text", "text", 
-                                                                         "date", "text", "text", "text", "date", "numeric", "date"))
-colnames(DBS_inventario_INS) <- c("box","ziplocknr","study","studyname","openhdsindividualId", "samplename","data_da_colheita_excelformat","sampletype","geolocation","province","data_congelacao","n_defrosts", "data_da_colheita")
-DBS_inventario_INS$datacolheita <- as.Date(DBS_inventario_INS$data_da_colheita)
-table(DBS_inventario_INS$data_da_colheita, useNA = "always") # 24 NA's
-# mistakes in IDs
-DBS_inventario_INS$openhdsindividualId[DBS_inventario_INS$openhdsindividualId=="QLNM3006002"] <- "QULNM3006002"
-DBS_inventario_INS$openhdsindividualId[DBS_inventario_INS$openhdsindividualId=="UNMU1001001"] <- "QUJNM1001001"
-# remove duplicate entries
-dupslab = which(duplicated(DBS_inventario_INS%>%filter(!is.na(datacolheita))%>%select(openhdsindividualId,data_da_colheita)))
-length(dupslab)
-# Remove duplicated rows
-DBS_inventario_INS <- DBS_inventario_INS %>% filter(!row.names(DBS_inventario_INS) %in% dupslab)
-# remove unnecessary variables
-DBS_inventario_INS <- DBS_inventario_INS %>% select(openhdsindividualId, ziplocknr, datacolheita)
-# limit to 28 June (from 29 June in DBS follow-up file)
-DBS_inventario_INS <- DBS_inventario_INS %>% filter(!is.na(datacolheita)&datacolheita<"2021-06-30") # only missing after 30 June
-
-# DBS seguimento das amostras - for the second half of the study (from 29 July)
-DBSfollowup <- read_excel("database/20220323/Seguimento das amostras Africover.xlsx", 
-                          sheet = "DBS")
-DBSfollowup$`Data de colheita`[DBSfollowup$`Data de colheita`=="4-Sep-2021\r\n"] <- "4-Sep-2021"
-DBSfollowup$`Data de colheita`<- tolower(DBSfollowup$`Data de colheita`)
-DBSfollowup$datacolheita <- NA
-DBSfollowup$datacolheita[grepl("44", DBSfollowup$`Data de colheita`)==TRUE] <- DBSfollowup$`Data de colheita`[grepl("44", DBSfollowup$`Data de colheita`)==TRUE]
-DBSfollowup$datacolheita <- as.numeric(DBSfollowup$datacolheita)
-DBSfollowup$datacolheita <- as.Date(DBSfollowup$datacolheita, origin = "1899-12-30")
-DBSfollowup$datacolheita[grepl("44", DBSfollowup$`Data de colheita`)==F] <- as.Date(DBSfollowup$`Data de colheita`[grepl("44", DBSfollowup$`Data de colheita`)==F], "%d-%b-%Y")
-# it did not recognize "oct", so I changed manually in the excel file
-# 2 dates were not converted to date format, so changing manually
-DBSfollowup$datacolheita[DBSfollowup$`Data de colheita`=="13/10/2021"] <- "2021-10-13"
-DBSfollowup$datacolheita[DBSfollowup$`Data de colheita`=="27/10/2021"] <- "2021-10-27"
-# remove unnecessary variables and rename remaining vars
-colnames(DBSfollowup) <- c("datacolheita_old", "participantID_ODK", "dob", "id_origin", "id_correct", "shippingdate","openhdsindividualId","reception_date", "comments2","box","ziplocknr","storagedate","unfrozen_n","blank","datacolheita")
-DBSfollowup <- DBSfollowup %>% select(openhdsindividualId, dob, ziplocknr, datacolheita)
-# remove duplicate rows
-dups = which(duplicated(DBSfollowup%>%filter(!is.na(datacolheita))%>%select(openhdsindividualId,datacolheita)))
-length(dups)
-DBSfollowup <- DBSfollowup %>% filter(!row.names(DBSfollowup) %in% dups)
-# remove samples that were in ODK but lab didn't receive
-DBSfollowup$openhdsindividualId[grepl("RECEBI", DBSfollowup$openhdsindividualId)==TRUE] <- NA
-DBSfollowup$openhdsindividualId[grepl("DUPLIC", DBSfollowup$openhdsindividualId)==TRUE] <- NA
-DBSfollowup <- subset(DBSfollowup, !is.na(DBSfollowup$openhdsindividualId))
-
-
-# combine DBS inventory and DBS follow-up to have a single list of participant IDs with dates of sample collection
-DBS_inventario_INS$dob <- NA
-DBSlist <- rbind(DBS_inventario_INS,DBSfollowup)
-
-# count the how many-th sample it is of a single participant
-DBSlist$v1 <- 1
-DBSlist$seq <- ave(DBSlist$v1, DBSlist$openhdsindividualId, FUN = seq_along)
-DBSlist <- subset(DBSlist, select = c(-v1))
 
 # link DBS results to dates
 DBSresults$sampleID <- paste(DBSresults$participantID,"-",DBSresults$seq)
 DBSlist$sampleID <- paste(DBSlist$openhdsindividualId,"-",DBSlist$seq)
 DBS <- merge(DBSresults, DBSlist, by = "sampleID", all = T)
 
-# clean codes which aren't matching
-
-
-
 # export to check
 write.table(DBS, file = "DBS.txt")
 write.csv(DBS, file = "DBS.csv")
 
+## ODK F4 serosurveys (short questionnaire completed at the time of the visit for sample collection)
+# F4_v1 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F4_Serovigilancia_v1_0.csv")
+# F4_v2 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F4_Serovigilancia_v2_0.csv")
+# F4 <- rbind(F4_v1, F4_v2)
+# # change format variable date 
+# F4$data_colheita <- as.Date(F4$sample_collection_date, "%b %d, %Y")
+F4 <- read_excel("database/20220323/F4.xlsx")
+F4$datacolheita <- as.Date(F4$sample_confirmsample_collection)
+F4$dataformulario <- as.Date(F4$start)
+# remove entries when no sample was collected
+F4 <- subset(F4, F4$sample_confirmsample_colected==1)
+# check dates that don't make sense and replace collection date with questionnaire start date
+F4$datacolheita[F4$datacolheita=="2020-03-07"] <- "2021-06-18"
+# find dates of collection long after the questionnaire was completed and therefore do not make sense (limit put at 7days)
+F4$time_F_to_collection <- F4$data_colheita - F4$data_formulario
+table(F4$time_F_to_collection)
+F4$data_colheita[as.numeric(F4$time_F_to_collection)< -8] <- F4$data_formulario[as.numeric(F4$time_F_to_collection) < -8]
+# replace data
+
+# F4$data_colheita[(F4$time_F_to_collection*-1)>20] <- F4$data_formulario[(F4$time_F_to_collection*-1)>20]
+
+# remove duplicate entries in F4 odk
+# Check if duplicated rows (i.e. same index and same HRC)
+dups = which(duplicated(F4%>%select(openhdsindividualId,data_colheita)))
+length(dups)
+# Remove duplicated rows
+F4 = F4 %>% filter(!row.names(F4) %in% dups)
 
 
 # Merge odk and lab databases based on ID and date of collection
-serosurveymerged <- merge(DBS_inventario_INS_nodups, F4, by = c("openhdsindividualId","data_da_colheita"), all.x = T) # only keeping the samples in the lab though
+serosurveymerged <- merge(DBSdec20jun21_nodups, F4, by = c("openhdsindividualId","data_da_colheita"), all.x = T) # only keeping the samples in the lab though
 serosurveymerged_short <- subset(serosurveymerged, select = c("openhdsindividualId", "data_da_colheita", "roundodk"))
 
 # Merge date of birth with merged odk-lab db

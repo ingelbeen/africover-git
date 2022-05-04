@@ -3,9 +3,6 @@
 # Script to estimate disease incidence (cases from active surveillance)     #
 #############################################################################
 
-# test
-
-
 # install/load packages
 pacman::p_load(readxl,dplyr,lubridate, ggplot2, ggthemes, scales, usethis, zoo)
 
