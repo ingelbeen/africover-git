@@ -50,7 +50,11 @@ An existing Luminex platform was used to test dried blood spots (DBS) collected 
 - nasal swab PCR results (of possible cases) 
 
 ## Data analysis scripts
-- africover_merge_odk_lab.R - importing, cleaning and merging databases to create a single participant database, a possible Covid19 case database and a sero-survey database.
+To run the merge_odk_lab.R script, you will need a folder "database" in your project, with the different databases, which will be put on this repository once completed, cleaned and anonymized.
+To run the analysis scripts, you need first to run merge_odk_lab.R, which will generate .csv files with cleaned and linked databases, which are then imported in the analysis scripts.
+
+### Description of the scripts
+- merge_odk_lab.R - importing, cleaning and merging databases to create a single participant database, a possible Covid19 case database and a sero-survey database.
 - infection_prevalence_risk_factors.R - prevalence and risk factors for infection in the first pandemic year (SARS-CoV-2 Ab detected during baseline and M3 sero-survey rounds)
 - nasal_swab_performance.R - positivity of PCR on nasal swab samples of possible cases by age, time between symptom onset and sample collection, variant (?), and clinical signs+symptoms
 - disease_incidence.R - Covid19 possible case incidence 
