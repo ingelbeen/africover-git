@@ -11,56 +11,76 @@ pacman::p_load(readxl,dplyr,lubridate, ggplot2, usethis)
 # Import demographic data
 demographics <- read_excel("database/Demographics_database_unlocked.xlsx", sheet = "Sheet1") # no duplicates (checked)
 demographics$dob <- as.Date(demographics$DOB, "%m/%d/%Y")
-dob <- subset(demographics, select = c("openhdsindividualId","DOB", "GENDER"))
+agesexsubset <- subset(demographics, select = c("openhdsindividualId","dob", "GENDER"))
 baseline_demographics <- read_excel("database/Baseline_demographics.xlsx")
 baseline_demographics$openhdsindividualId <- baseline_demographics$`individualInfo:individualId`
 baseline_demographics$dob <- as.Date(baseline_demographics$`individualInfo:dateOfBirth`)
 baseline_demographics$GENDER <- baseline_demographics$`individualInfo:gender` 
 baseline_demographics <- baseline_demographics %>%
   select(openhdsindividualId, dob, GENDER)
+# for some age and sex were missing, which have been manually looked up
+missing_age_sex <- read_excel("database/20220323/missing age_sex.xlsx", 
+                              col_types = c("text", "text", "text", 
+                                            "date", "numeric"))
+colnames(missing_age_sex) <- c("openhdsindividualId","HHId","GENDER","dob","age")
+missing_age_sex <- missing_age_sex %>% filter(!is.na(dob)) %>% select(openhdsindividualId,GENDER,dob)
+# append all three
+demographics <- rbind(agesexsubset,baseline_demographics)
+demographics <- rbind(demographics,missing_age_sex)
+
 # Remove duplicated rows
-dups = which(duplicated(baseline_demographics%>%select(openhdsindividualId, dob))) # CHECK - same participantID, different dob
-baseline_demographics = baseline_demographics %>% filter(!row.names(baseline_demographics) %in% dups)
+dups = which(duplicated(demographics%>%select(openhdsindividualId, dob, GENDER))) # CHECK - same participantID, different dob
+demographics = demographics %>% filter(!row.names(demographics) %in% dups)
+
 
 #### 2. BASELINE AFRICOVER DATA ####
 # F1 baseline
 # household data
-F1a <- read_excel("database/20220323/F1a.xlsx")
-F1a$startdate <- as.Date(F1a$start)
-F1a <- F1a %>%
-  filter(startdate<"2021-05-01")
-# F1a_v1 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F1a_Base_Agregado_familiar_v1_0.csv")
-# F1a_v1$motive <- NA
-# F1a_v1$especify_motive <- NA
-# F1a_v1$is_consent_signed <- NA
-# F1a_v2 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F1a_Base_Agregado_familiar_v2_0.csv")
-# F1a <- rbind(F1a_v1, F1a_v2)
+F1a_v1 <- read_excel("database/20220609cleaned/AfriCoVER_F1a_Base_Agregado_familiar_v1.0.xls")
+F1a_v1$motive <- NA
+F1a_v1$especify_motive <- NA
+F1a_v1$is_consent_signed <- NA
+names(F1a_v1) <- tolower(names(F1a_v1))
+F1a_v2 <- read_excel("database/20220609cleaned/AfriCoVER_F1a_Base_Agregado_familiar_v2_0.xls")
+names(F1a_v2) <- tolower(names(F1a_v2))
+F1a <- rbind(F1a_v1, F1a_v2)
 # Check if duplicated rows (i.e. same index and same HRC)
 dups = which(duplicated(F1a%>%select(openhdsindividualId,is_consent_signed, household_chracteristicsbedroom, household_chracteristicswashto)))
 length(dups)
 # Remove duplicated rows
 F1a = F1a %>% filter(!row.names(F1a) %in% dups)
+F1a$date_enrolled <- as.Date(F1a$start,"%m/%d/%Y") # 1733 missing
+table(F1a$date_enrolled, useNA = "always")
+
 # individual participant data
-F1b <- read_excel("database/20220323/F1b.xlsx")
-# F1b_v1 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F1b_Base_Individual_v1_0.csv")
-# F1b_v1$motive <- NA
-# F1b_v1$especify_motive <- NA
-# F1b_v1$is_consent_signed <- NA
-# F1b_v2 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F1b_Base_Individual_v2_0.csv")
-# F1b <- rbind(F1b_v2, F1b_v1)
-F1b$start <- as.Date(F1b$start)
+F1b_v1 <- read_excel("database/20220609cleaned/AfriCoVER_F1b_Base_Individual_v1_0.xls")
+names(F1b_v1) <- tolower(names(F1b_v1))
+F1b_v2 <- read_excel("database/20220609cleaned/AfriCoVER_F1b_Base_Individual_v2_0.xls")
+names(F1b_v1) <- names(F1b_v2)
+F1b <- rbind(F1b_v2, F1b_v1)
+F1b$date_enrolled <- as.Date(F1b$start,"%m/%d/%Y")
+table(F1b$date_enrolled, useNA = "always") # none missing
 # Check if duplicated rows (i.e. same index and same HRC)
-dups = which(duplicated(F1b%>%select(openhdsindividualId, is_consent_signed, exposuremass_bus, drugssmoking)))
-length(dups)
+dups = which(duplicated(F1b%>%select(individualid, is_consent_signed, main_bus, mass_bus, smoking)))
+length(dups) # no full duplicates
 # STILL NEED TO REMOVE OBSERVATIONS FROM PARTICIPANTS WHO INITIALLY REFUSED TO PARTICIPATE, BUT LATER WERE APPROACHED AGAIN AND THEN A FORM WAS COMPLETED
-# Remove duplicated rows
-F1b = F1b %>% filter(!row.names(F1b) %in% dups)
+dupsincomplete = which(duplicated(F1b%>%select(individualid)))
+length(dupsincomplete) # one duplicate (ID QUGAM2002013)
+# remove second entry for a single person, slightly different from the first
+F1b <- subset(F1b, date_enrolled!="2021-08-17"|individualid!="QUGAM2002013")
+table(F1b$is_consent_signed)
+
+# remove unncessecary vars
+F1b <- F1b %>% select(-c("start", "end", "key", "fieldworkerid", "visitid", "instanceid", "processedbymirth","submissiondate"))
+F1a <- F1a %>% select(-c("start", "end", "key","openhdsvisitid","openhdsfieldworkerid", "openhdsindividualid","is_consent_signed","motive","metainstanceid","processedbymirth"))
+
 # merge F1a & F1b
-F1 <-merge(F1b, F1a, by="openhdslocationId", all.x = T)
+names(F1b)[1] <- "openhdslocationid"
+F1 <- merge(F1b, F1a, by="openhdslocationid", all.x = T)
 
 # check HH with no individual (F1b) data
 F1awithoutF1b <- F1 %>%
-  filter(is.na(start.y)) %>%
+  filter(is.na(mass_bus)) %>%
   select(openhdsindividualId.x)
 write.table(F1awithoutF1b, "F1awithoutF1b.txt")
 
@@ -348,8 +368,12 @@ colnames(DBSjun21feb22) <- c("datacolheita_old", "participantID_ODK", "dob", "id
 
 # keep the ODK participantID for those marked as 'not received', in case they still turned up
 DBSjun21feb22$openhdsindividualId[grepl("RECEBI", DBSjun21feb22$openhdsindividualId)==TRUE] <- DBSjun21feb22$participantID_ODK
-# remove the duplicate ODK entries
+# remove the duplicate or missing ODK entries
 DBSjun21feb22 <- subset(DBSjun21feb22, grepl("DUPLIC", DBSjun21feb22$openhdsindividualId)==F)
+DBSjun21feb22 <- subset(DBSjun21feb22, grepl("NAO ENCONTR", DBSjun21feb22$openhdsindividualId)==F)
+# replace errors in participant ID
+DBSjun21feb22$openhdsindividualId[DBSjun21feb22$openhdsindividualId=="QU00NM4009008"] <- "QU0NM4009008"
+
 # remove unnecessary variables
 DBSjun21feb22 <- DBSjun21feb22 %>% select(openhdsindividualId, dob, ziplocknr, datacolheita)
 
@@ -367,6 +391,8 @@ DBSlist <- rbind(DBSdec20jun21,DBSjun21feb22)
 DBSlist$v1 <- 1
 DBSlist$seq <- ave(DBSlist$v1, DBSlist$openhdsindividualId, FUN = seq_along)
 DBSlist <- subset(DBSlist, select = c(-v1))
+# remove if openhdsindividualId is missing
+DBSlist <- DBSlist %>% filter(!is.na(openhdsindividualId)) 
 
 # 4.2. Import DBS results
 # DBS results (do not contain data de colheita, which we will have to add afterwards)
@@ -374,13 +400,22 @@ DBSresults <- read_excel("database/20220323/DBSresults220318.xlsx",
                          sheet = "All Data Info.")
 # remove rows of control panel results (not needed because the raw values have already been interpreted by Joachim)
 DBSresults <- subset(DBSresults, participantsample==1)
+
 # remove other variables
 DBSresults <- DBSresults %>% select(participantID, plate, Result)
+# remove errors in IDs
+DBSresults$participantID[DBSresults$participantID=="QUOGJ1003009"] <- "QUOGJ1003009"
+DBSresults$participantID[DBSresults$participantID=="QUPC1009001"] <- "QU1PC1009001" # check later again, could also be QULPC1009001
+# QURT10210033 can't find which sample this should be linked to
+DBSresults$participantID[DBSresults$participantID=="QUSCS3038006"] <- "QU5CS3038006"
+DBSresults$participantID[DBSresults$participantID=="QUUFCS1007005"] <- "QUFCS1007005"
+
 # Check if duplicated rows (i.e. same index and same HRC)
 dups = which(duplicated(DBSresults%>%select(participantID, plate, Result)))
 length(dups)
 # Remove duplicated rows
 DBSresults <- DBSresults %>% filter(!row.names(DBSresults) %in% dups) 
+
 # remove capital letters in results
 DBSresults$Result <- tolower(DBSresults$Result)
 # count which occurrence it is of the participant
@@ -399,6 +434,15 @@ table(summary_participants$n)
 DBSresults$sampleID <- paste(DBSresults$participantID,"-",DBSresults$seq)
 DBSlist$sampleID <- paste(DBSlist$openhdsindividualId,"-",DBSlist$seq)
 DBS <- merge(DBSresults, DBSlist, by = "sampleID", all = T)
+
+# remove mismatch
+DBS <- DBS %>% filter(DBS$sampleID!="QUZGJ1005003 - 1"|is.na(DBS$datacolheita)==F)
+
+# mark those with probably enter errors
+DBS$comment[is.na(DBS$openhdsindividualId)] <- "check ID"
+
+# remove unnecessary variables
+DBS <- DBS %>% select(-c("seq.x","seq.y"))
 
 # export to check
 write.table(DBS, file = "DBS.txt")
