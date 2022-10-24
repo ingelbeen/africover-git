@@ -3,35 +3,62 @@
 # Script to import, clean and merge ODK, HDSS demographic, and lab databases#
 #############################################################################
 # contributors: Catildo, Nilzio, Brecht
+# date last update: 2022-10-24
 
 # install/load packages
 pacman::p_load(readxl,dplyr,lubridate, ggplot2, usethis)
 
 #### 1. DEMOGRAPHIC DATA ####
-# Import demographic data
-demographics <- read_excel("database/Demographics_database_unlocked.xlsx", sheet = "Sheet1") # no duplicates (checked)
-demographics$dob <- as.Date(demographics$DOB, "%m/%d/%Y")
-agesexsubset <- subset(demographics, select = c("openhdsindividualId","dob", "GENDER"))
+# Import demographic & SES data
+demographicsSES <- read_excel("database/Demographics_database_unlocked.xlsx", sheet = "Sheet1") # no duplicates (checked)
+demographicsSES$dob <- as.Date(demographicsSES$DOB, "%m/%d/%Y")
+agesexsubset <- subset(demographicsSES, select = c("openhdsindividualId","dob", "GENDER"))
+agesexsubset <- subset(agesexsubset, !is.na(dob))
+
+# another database for those without SES data
 baseline_demographics <- read_excel("database/Baseline_demographics.xlsx")
 baseline_demographics$openhdsindividualId <- baseline_demographics$`individualInfo:individualId`
 baseline_demographics$dob <- as.Date(baseline_demographics$`individualInfo:dateOfBirth`)
 baseline_demographics$GENDER <- baseline_demographics$`individualInfo:gender` 
 baseline_demographics <- baseline_demographics %>%
+  filter(!is.na(dob)) %>%
   select(openhdsindividualId, dob, GENDER)
+
 # for some age and sex were missing, which have been manually looked up
 missing_age_sex <- read_excel("database/20220323/missing age_sex.xlsx", 
                               col_types = c("text", "text", "text", 
                                             "date", "numeric"))
 colnames(missing_age_sex) <- c("openhdsindividualId","HHId","GENDER","dob","age")
 missing_age_sex <- missing_age_sex %>% filter(!is.na(dob)) %>% select(openhdsindividualId,GENDER,dob)
+
 # append all three
 demographics <- rbind(agesexsubset,baseline_demographics)
 demographics <- rbind(demographics,missing_age_sex)
 
 # Remove duplicated rows
-dups = which(duplicated(demographics%>%select(openhdsindividualId, dob, GENDER))) # CHECK - same participantID, different dob
-demographics = demographics %>% filter(!row.names(demographics) %in% dups)
+# full duplicates (same participant ID and DOB)
+dups <- which(duplicated(demographics%>%select(openhdsindividualId, dob))) # CHECK - same participantID, different dob
+demographics <- demographics %>% filter(!row.names(demographics) %in% dups)
+# duplicate participant ID but different dob
+dups <- which(duplicated(demographics%>%select(openhdsindividualId))) # CHECK - same participantID, different dob
+dupsindemographics <- demographics %>% filter(row.names(demographics) %in% dups) # make a list of all duplicates to manually check
+# remove one by one duplicate participants which are also Africover participants
+demographics <- subset(demographics, dob!="1995-02-12"|openhdsindividualId!="QU1CS3012007")
+# QU5NM4008009 is duplicate but no study participant
+demographics <- subset(demographics, dob!="1993-11-15"|openhdsindividualId!="QU7MU1029003")
+demographics <- subset(demographics, dob!="1958-06-17"|openhdsindividualId!="QUF000001001")
+demographics <- subset(demographics, dob!="1973-11-10"|openhdsindividualId!="QUF000001002")
+demographics <- subset(demographics, dob!="1994-10-11"|openhdsindividualId!="QUF000001003")
+demographics <- subset(demographics, dob!="1994-10-11"|openhdsindividualId!="QUF000001004")
+demographics <- subset(demographics, dob!="2009-07-12"|openhdsindividualId!="QUF000001005")
+demographics <- subset(demographics, dob!="2012-08-06"|openhdsindividualId!="QUF000001006")
+demographics <- subset(demographics, dob!="2002-01-03"|openhdsindividualId!="QUFNM1004007")
+demographics <- subset(demographics, dob!="2013-04-13"|openhdsindividualId!="QULNM4002007")
 
+
+# add SES for those for whom available
+SES <- subset(demographicsSES, select = c("openhdsindividualId","ednivel_educacao", "SesScoreQnt"))
+demographics <- merge(demographics, SES, by = "openhdsindividualId", all.x = T)
 
 #### 2. BASELINE AFRICOVER DATA ####
 # F1 baseline
@@ -44,13 +71,15 @@ names(F1a_v1) <- tolower(names(F1a_v1))
 F1a_v2 <- read_excel("database/20220609cleaned/AfriCoVER_F1a_Base_Agregado_familiar_v2_0.xls")
 names(F1a_v2) <- tolower(names(F1a_v2))
 F1a <- rbind(F1a_v1, F1a_v2)
-# Check if duplicated rows (i.e. same index and same HRC)
-dups = which(duplicated(F1a%>%select(openhdsindividualId,is_consent_signed, household_chracteristicsbedroom, household_chracteristicswashto)))
+# remove entries without consent
+F1a <- subset(F1a, F1a$is_consent_signed != "nao")
+# check duplicated rows
+dups = which(duplicated(F1a%>%select(openhdslocationid))) # a single duplicate with just one answer different - keep the first
 length(dups)
 # Remove duplicated rows
 F1a = F1a %>% filter(!row.names(F1a) %in% dups)
-F1a$date_enrolled <- as.Date(F1a$start,"%m/%d/%Y") # 1733 missing
-table(F1a$date_enrolled, useNA = "always")
+# F1a$date_enrolled <- as.Date(F1a$start,"%m/%d/%Y") # 1733 missing
+# table(F1a$date_enrolled, useNA = "always")
 
 # individual participant data
 F1b_v1 <- read_excel("database/20220609cleaned/AfriCoVER_F1b_Base_Individual_v1_0.xls")
@@ -60,48 +89,55 @@ names(F1b_v1) <- names(F1b_v2)
 F1b <- rbind(F1b_v2, F1b_v1)
 F1b$date_enrolled <- as.Date(F1b$start,"%m/%d/%Y")
 table(F1b$date_enrolled, useNA = "always") # none missing
-# Check if duplicated rows (i.e. same index and same HRC)
-dups = which(duplicated(F1b%>%select(individualid, is_consent_signed, main_bus, mass_bus, smoking)))
+# check duplicated rows
+dups = which(duplicated(F1b%>%select(individualid, is_consent_signed)))
 length(dups) # no full duplicates
-# STILL NEED TO REMOVE OBSERVATIONS FROM PARTICIPANTS WHO INITIALLY REFUSED TO PARTICIPATE, BUT LATER WERE APPROACHED AGAIN AND THEN A FORM WAS COMPLETED
+# check for duplicate participant IDs without all other variables
 dupsincomplete = which(duplicated(F1b%>%select(individualid)))
 length(dupsincomplete) # one duplicate (ID QUGAM2002013)
 # remove second entry for a single person, slightly different from the first
 F1b <- subset(F1b, date_enrolled!="2021-08-17"|individualid!="QUGAM2002013")
 table(F1b$is_consent_signed)
 
-# remove unncessecary vars
-F1b <- F1b %>% select(-c("start", "end", "key", "fieldworkerid", "visitid", "instanceid", "processedbymirth","submissiondate"))
-F1a <- F1a %>% select(-c("start", "end", "key","openhdsvisitid","openhdsfieldworkerid", "openhdsindividualid","is_consent_signed","motive","metainstanceid","processedbymirth"))
+# remove unnecessary vars
+F1b <- F1b %>% select(-c("start", "end", "key", "fieldworkerid", "visitid", "instanceid", "processedbymirth","submissiondate","especify_motive"))
+F1a <- F1a %>% select(-c("start", "end", "date_enrolled", "key","openhdsvisitid","openhdsfieldworkerid", "openhdsindividualid","is_consent_signed","motive","especify_motive","metainstanceid","processedbymirth"))
 
 # merge F1a & F1b
 names(F1b)[1] <- "openhdslocationid"
 F1 <- merge(F1b, F1a, by="openhdslocationid", all.x = T)
 
-# check HH with no individual (F1b) data
+
+# check HH with no individual (F1b) data -> for 25 participants
 F1awithoutF1b <- F1 %>%
   filter(is.na(mass_bus)) %>%
-  select(openhdsindividualId.x)
+  select(individualid)
 write.table(F1awithoutF1b, "F1awithoutF1b.txt")
 
 # merge with demographic data
-participants <- merge(demographics, F1, by.x = "openhdsindividualId", by.y = "openhdsindividualId.x", all.y = T)
+participants <- merge(demographics, F1, by.x = "openhdsindividualId", by.y = "individualid", all.y = T)
+dups = which(duplicated(participants%>%select(openhdsindividualId))) # checked, but no duplicates anymore
 
-# check those for which no demographic data
+
+str(participants)
+
+# check those for which no demographic or SES data
 missingdemographicdata <- participants %>%
   filter(is.na(dob)) %>%
+  select(openhdsindividualId) # shared with Alberto to check STILL ADD THE MISSING AGES AND SEX
+missingSESdata <- participants %>%
+  filter(is.na(SesScoreQnt)) %>%
   select(openhdsindividualId)
-write.table(missingdemographicdata, "missingdemographicdata.txt")
-
-# when no demographic data, add date of birth and sex
-participants <- merge(participants, baseline_demographics, by = "openhdsindividualId", all.x = T)
-participants$dob <- participants$dob.x
-participants$dob[is.na(participants$dob)] <- participants$dob.y[is.na(participants$dob)] 
-participants$sex <- participants$GENDER.x
-participants$sex[is.na(participants$sex)] <- participants$GENDER.y[is.na(participants$sex)]
+write.table(missingSESdata, "missingSESdata.txt") # shared with Alberto to check
 
 # add age groups
-participants$age <- round(as.numeric((participants$start.x - participants$dob))/365.25,0)
+participants$age <- round(as.numeric(as.Date("2021-06-15") - participants$dob)/365.25,0)
+participants$age[participants$age<0] <- 0
+agestocheck <- participants %>%
+  filter(age>90 | age<0) %>%
+  select(dob, age, openhdsindividualId)
+write.table(agestocheck,"agestocheck.txt") # 21 over 90 yo to check STILL ADAPT THESE DOB WHEN VERIFIED AND CORRECTED
+
 participants$agegr[participants$age<18] <- "0-17"
 participants$agegr[participants$age>17&participants$age<50] <- "18-49"
 participants$agegr[participants$age>49] <- "50+"
@@ -114,52 +150,57 @@ missingage_sex <- participants %>%
   select(openhdsindividualId)
 write.table(missingage_sex, "missingage_sex.txt")
 
-# keep only variables of interest
-participants_simplified <- participants %>%
-  select(openhdsindividualId, sex, age, dob, agegr, linguasportugues1, ecestado_civil, trabtrabalho, SesScoreQnt, empsituacao_emprego, ednivel_educacao, drugshiv, drugscancer, drugsdiabet, drugshypertension, drugschronic_kidney_disease, drugschronic_lung_disease) 
-# more variables to add here, but it would be easier from a dataframe with strings instead of numbers for factor variables
-
 # F3 weight & height
-F3 <- read_excel("database/20220323/F3.xlsx")
-# Check if duplicated rows (i.e. same index and same HRC)
-dups = which(duplicated(F3%>%select(openhdsindividualId, measurementsheight, measurementsarm_circumference, measurementsweight)))
+F3 <- read_excel("database/20220609cleaned/AfriCoVER_F3_Medicoes_fisicas.xls")
+# check if duplicated rows 
+dups = which(duplicated(F3%>%select(individualid, height, arm_circumference, weight)))
 length(dups)
 # Remove duplicated rows
 F3 = F3 %>% filter(!row.names(F3) %in% dups)
 # make a dataset that combines observations of weight, height and MUAC during different visits (if weight is collected during a different visit than height)
 F3_weightheightcombined <- F3 %>%
-  filter(measurementswas_weighed==1|measurementswas_arm_circumferen==1|measurementswas_height_measured==1)%>%
-  group_by(openhdsindividualId) %>%
-  summarize(weight=mean(measurementsweight), height=mean(measurementsheight), MUAC=mean(measurementsarm_circumference))
+  filter(was_weighed=="Sim"|was_arm_circumference=="Sim"|was_height_measured=="Sim")%>%
+  group_by(individualid) %>%
+  summarize(weight=mean(weight), height=mean(height), MUAC=mean(arm_circumference))
 hist(F3_weightheightcombined$weight)
 hist(F3_weightheightcombined$height)
 # BMI
 F3_weightheightcombined$BMI <- round(F3_weightheightcombined$weight/((F3_weightheightcombined$height/100)^2),1)
+hist(F3_weightheightcombined$BMI)
 
 # merge participant baseline data and weight and height
-participants <- merge(participants_simplified, F3_weightheightcombined, by = "openhdsindividualId", all.x = T) # only 3684 out of 6807
+participants <- merge(participants, F3_weightheightcombined, by.x = "openhdsindividualId", by.y = "individualid", all.x = T) # only 3684 out of 6807
+
 # identify those with weight and height that doesn't make sense
 list_weight_height_problems <- participants %>%
   filter((BMI<10|BMI>35) & age>4) %>%
-  select(openhdsindividualId, sex, age, weight, height, BMI, MUAC)
+  select(openhdsindividualId, GENDER, age, weight, height, BMI, MUAC)
 write.table(list_weight_height_problems, file = "list_weight_height_problems.txt")
 
-# Check if duplicated rows (i.e. same index and same HRC)
-dups = which(duplicated(participants_simplified%>%select(openhdsindividualId)))
-length(dups)
-# Remove duplicated rows
-participants_simplified = participants_simplified %>% filter(!row.names(participants_simplified) %in% dups)
+# import updates of comorbidities (F7), such as new diagnoses of HIV, chronic conditions, etc., once we have a version with factor variables as strings
+F7 <- read_excel("database/20220609cleaned/AfriCoVER_F7_Comorbididades limpo.xls")
+#
+
+
+
 
 # export participant database FOR NOW SIMPLIFIED WITHOUT F3 - SHOULD BE CHANGED LATER ON
 write.csv(participants_simplified, file = "participants_simplified.csv")
 
+# describe number of participants and HHs
+count(participants)
+table(participants$agegr)
+nHH <- participants %>%
+  group_by(openhdslocationid) %>%
+  summarise(n=n())
+  
 #### 3. ACTIVE SURVEILLANCE FOR POSSIBLE CASES ####
 ## 3.1 ODK possible case reports
 # F5_v1 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F5_Possivel_caso_v1_0.csv")
 # F5_v2 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F5_Possivel_caso_v2_0.csv")
 # F5 <- rbind(F5_v1, F5_v2)
 F5 <- read_excel("database/20220323/F5.xlsx")
-# Check if duplicated rows (i.e. same index and same HRC)
+# check duplicated rows
 dups = which(duplicated(F5%>%select(`openhds-individualId`, `situacao_clinica-data_inicio_sintomas`, `situacao_clinica-symptoms_start_date`, `nasal_swab_data-nasal_swab_date`)))
 length(dups)
 # Remove duplicated rows
@@ -229,11 +270,17 @@ write.csv(possiblecases_participants, file = "possiblecases_participants.csv")
 ## 3.4 F2 active surveillance follow-up
 # household part
 F2 <- read_excel("database/20220323/F2.xlsx")
-# Check if duplicated rows (i.e. same index and same HRC)
+# check duplicated rows
 dups = which(duplicated(F2%>%select(start, openhdsindividualId, visit_confirmationcontact_type, visit_confirmationcontact_date, KEY)))
 length(dups)
 # Remove duplicated rows
 F2 <- F2 %>% filter(!row.names(F2) %in% dups) # n=9959
+# number of visits
+nFUvisits <- F2 %>%
+  filter(visit_confirmationvisit_done != 0) %>%
+  group_by(visit_confirmationcontact_date, openhdsvisitId)
+nFUvisits
+
 # check how often symptomatic cases were reported in the HH
 table(F2$exposure_symptomsrespiratory_sy) # 407 HH visits with (at least one) episode reported
 # format date of symptom onset
@@ -244,7 +291,7 @@ F2$datesymptomonset <- as.Date(F2$history_symptoms_symptoms_date_)
 table(F2$datesymptomonset, useNA = "always")
 # individual HH member part (episodes of illness)
 F2episodes <- read_excel("database/20220323/F2_symptoms.xlsx")
-# Check if duplicated rows (i.e. same index and same HRC)
+# check duplicated rows
 dups = which(duplicated(F2episodes%>%select(history_symptoms_individualID_r, KEY)))
 length(dups)
 # Remove duplicated rows
@@ -268,78 +315,94 @@ possiblecases_participants$HH_datacolheita[!is.na(possiblecases_participants$ope
 # we will start from the samples, as for some samples, an ODK entry is missing, or ODK entries exit for which no sample can be found
 ## 4.1. import two DBS inventory files ##
 ## import file of the first 6 months of the study (15 Dec 20 to 28 June 21)
-DBSdec20jun21 <- read_excel("database/Africover lab DB 05072021/africover_inventario_DBS_210704.xlsx", 
-                                 sheet = "Sheet1", col_types = c("text", "text", "text", "text", "text", "text", 
-                                                                 "date", "text", "text", "text", "date", "numeric", "date"))
+# DBSdec20jun21 <- read_excel("database/Africover lab DB 05072021/africover_inventario_DBS_210704.xlsx", 
+#                                  sheet = "Sheet1", col_types = c("text", "text", "text", "text", "text", "text", 
+#                                                                  "date", "text", "text", "text", "date", "numeric", "date"))
+DBSinventory <- read_excel("database/20220323/DBS_inventory_update230522.xlsx", 
+                                         col_types = c("text", "text", "text", 
+                                                       "text", "text", "text", "text", "text", 
+                                                       "text", "text", "text", "numeric", 
+                                                       "text", "text"))
 # rename variables
-colnames(DBSdec20jun21) <- c("box","ziplocknr","study","studyname","openhdsindividualId", "samplename","data_da_colheita_excelformat","sampletype","geolocation","province","data_congelacao","n_defrosts", "data_da_colheita")
+colnames(DBSinventory) <- c("box","ziplocknr","study","studyname","openhdsindividualId", "samplename","data_da_colheita","sampletype","geolocation","province","data_congelacao","n_defrosts")
+
 # format date of collection as dates
-DBSdec20jun21$datacolheita <- as.Date(DBSdec20jun21$data_da_colheita)
+DBSinventory$data_da_colheita[DBSinventory$data_da_colheita=="24/062021"] <- "24/06/2021"
+DBSinventory$data_da_colheita[DBSinventory$data_da_colheita=="22/062021"] <- "22/06/2021"
+DBSinventory$datacolheita <- NA
+DBSinventory$datacolheita[grepl("44", DBSinventory$data_da_colheita)==TRUE] <- DBSinventory$data_da_colheita[grepl("44", DBSinventory$data_da_colheita)==TRUE]
+DBSinventory$datacolheita <- as.numeric(DBSinventory$datacolheita)
+DBSinventory$datacolheita <- as.Date(DBSinventory$datacolheita, origin = "1899-12-30")
+DBSinventory$datacolheita[grepl("44", DBSinventory$data_da_colheita)==F] <- as.Date(DBSinventory$data_da_colheita[grepl("44", DBSinventory$data_da_colheita)==F], "%d/%m/%Y")
+table(DBSinventory$datacolheita, useNA ="always")
+# it did not recognize "oct", so I changed manually in the excel file
+DBSinventory$datacolheita <- as.Date(DBSinventory$datacolheita)
+
 # mistakes in IDs -> checked inconsistencies manually in the paper forms
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QLNM3006002"] <- "QULNM3006002"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="UNMU1001001"] <- "QUJNM1001001"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU0GT1001002" & DBSdec20jun21$datacolheita=="2021-05-10"] <- "QU0GJ1001002"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU0GT1001009" & DBSdec20jun21$datacolheita=="2021-05-12"] <- "QU0GJ1001009"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU1NM1007002" & DBSdec20jun21$datacolheita=="2021-06-28"] <- "QU1NM1007002"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU1NM400801" & DBSdec20jun21$datacolheita=="2020-12-22"] <- "QU1NM4008001"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU1QM2038004" & DBSdec20jun21$datacolheita=="2021-01-05"] <- "QUIQM2038004"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU2GT1006001" & DBSdec20jun21$datacolheita=="2021-01-04"] <- NA # not found in the paper forms
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU3QM102202" & DBSdec20jun21$datacolheita=="2020-12-22"] <- "QU3QM1022002"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU4C10070010" & DBSdec20jun21$datacolheita=="2021-01-06"] <- "QU4PC1007010"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU5GT1003004"] <- "QU5GJ1003004"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU7M1029001"] <- "QU7QM1029001"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU7MU139001"] <- "QU7MU1039001"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU7NM4004013" & DBSdec20jun21$datacolheita=="2021-02-08"] <- "QU7NM4001013"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QU7NM404002"] <- "QU7NM4046002"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUACS3010001"] <- "QU4CS3010001"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUCP1006004"] <- "QUCPC1006004"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUENM1028001" & DBSdec20jun21$datacolheita=="2021-01-21"] <- "QUENM2002001"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUEQM1012001"] <- "QUEQM1002001"
-# DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUEQM2064001" & DBSdec20jun21$datacolheita=="2021-01-15"] <- "QUEQM2014001" I can't retrace this one
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUEQM2077002" & DBSdec20jun21$datacolheita=="2021-02-10"] <- "QUFQM2077002"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUFAM2023009"] <- "QUFAM2032009"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUFM20970110" & DBSdec20jun21$datacolheita=="2021-01-11"] <- "QUFQM2097011"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUFNM1002007" & DBSdec20jun21$datacolheita=="2021-05-26"] <- "QUFNM2002007"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUFNM129005"] <- "QUFNM1029005"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUFQM1097001"] <- "QUFQM2097001"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUGQM4011002"] <- "QUGQM2011002"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUHM2053002"] <- "QUHQM2053002"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUHQM2012001" & DBSdec20jun21$datacolheita=="2021-01-06"] <- "QUHQM1012001"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUHUM1012001"] <- "QUHMU1012001"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUICS3001013"] <- "QU1CS3001013"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUKAM1008006"] <- "QUKAM1008005"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QULAM203310"] <- "QULAM2033010"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QULG1028004"] <- "QULGJ1028004"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QULG51006008"] <- "QULGJ1006008"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QULMU100602"] <- "QULMU1006002"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUMCS2001006" & DBSdec20jun21$datacolheita=="2021-04-21"] <- "QUMCS3001006"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUMCS2003001" & DBSdec20jun21$datacolheita=="2021-04-21"] <- "QUMCS3003001"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUMCS301107"] <- "QUMCS3011007"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUMM1002005"] <- "QUMMU1002005"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUNM1003002"] <- "QUNMU1003002"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUOGJ1003009" & DBSdec20jun21$datacolheita=="2021-01-13"] <- "QU0GJ1003009"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QURT10210033"] <- "QU5RT1021003"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUSAM2044003"] <- "QU5AM2044003"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUSCS3002004"] <- "QU5CS3002004"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUSCS3038006"] <- "QU5CS3038006"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="QUZGJ1005003" & DBSdec20jun21$datacolheita=="2021-02-18"] <- "QU7GJ1005003"
-DBSdec20jun21$openhdsindividualId[DBSdec20jun21$openhdsindividualId=="UNMU1001001"] <- "QUNMU1001001"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QLNM3006002"] <- "QULNM3006002"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="UNMU1001001"] <- "QUJNM1001001"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QU0GT1001002" & DBSinventory$datacolheita=="2021-05-10"] <- "QU0GJ1001002"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QU0GT1001009" & DBSinventory$datacolheita=="2021-05-12"] <- "QU0GJ1001009"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QU1NM1007002" & DBSinventory$datacolheita=="2021-06-28"] <- "QU1NM1007002"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QU1NM400801" & DBSinventory$datacolheita=="2020-12-22"] <- "QU1NM4008001"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QU1QM2038004" & DBSinventory$datacolheita=="2021-01-05"] <- "QUIQM2038004"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QU2GT1006001" & DBSinventory$datacolheita=="2021-01-04"] <- NA # not found in the paper forms
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QU3QM102202" & DBSinventory$datacolheita=="2020-12-22"] <- "QU3QM1022002"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QU4C10070010" & DBSinventory$datacolheita=="2021-01-06"] <- "QU4PC1007010"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QU5GT1003004"] <- "QU5GJ1003004"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QU7M1029001"] <- "QU7QM1029001"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QU7MU139001"] <- "QU7MU1039001"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QU7NM4004013" & DBSinventory$datacolheita=="2021-02-08"] <- "QU7NM4001013"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QU7NM404002"] <- "QU7NM4046002"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUACS3010001"] <- "QU4CS3010001"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUCP1006004"] <- "QUCPC1006004"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUENM1028001" & DBSinventory$datacolheita=="2021-01-21"] <- "QUENM2002001"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUEQM1012001"] <- "QUEQM1002001"
+# DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUEQM2064001" & DBSinventory$datacolheita=="2021-01-15"] <- "QUEQM2014001" I can't retrace this one
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUEQM2077002" & DBSinventory$datacolheita=="2021-02-10"] <- "QUFQM2077002"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUFAM2023009"] <- "QUFAM2032009"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUFM20970110" & DBSinventory$datacolheita=="2021-01-11"] <- "QUFQM2097011"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUFNM1002007" & DBSinventory$datacolheita=="2021-05-26"] <- "QUFNM2002007"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUFNM129005"] <- "QUFNM1029005"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUFQM1097001"] <- "QUFQM2097001"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUGQM4011002"] <- "QUGQM2011002"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUHM2053002"] <- "QUHQM2053002"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUHQM2012001" & DBSinventory$datacolheita=="2021-01-06"] <- "QUHQM1012001"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUHUM1012001"] <- "QUHMU1012001"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUICS3001013"] <- "QU1CS3001013"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUKAM1008006"] <- "QUKAM1008005"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QULAM203310"] <- "QULAM2033010"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QULG1028004"] <- "QULGJ1028004"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QULG51006008"] <- "QULGJ1006008"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QULMU100602"] <- "QULMU1006002"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUMCS2001006" & DBSinventory$datacolheita=="2021-04-21"] <- "QUMCS3001006"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUMCS2003001" & DBSinventory$datacolheita=="2021-04-21"] <- "QUMCS3003001"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUMCS301107"] <- "QUMCS3011007"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUMM1002005"] <- "QUMMU1002005"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUNM1003002"] <- "QUNMU1003002"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUOGJ1003009" & DBSinventory$datacolheita=="2021-01-13"] <- "QU0GJ1003009"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QURT10210033"] <- "QU5RT1021003"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUSAM2044003"] <- "QU5AM2044003"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUSCS3002004"] <- "QU5CS3002004"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUSCS3038006"] <- "QU5CS3038006"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="QUZGJ1005003" & DBSinventory$datacolheita=="2021-02-18"] <- "QU7GJ1005003"
+DBSinventory$openhdsindividualId[DBSinventory$openhdsindividualId=="UNMU1001001"] <- "QUNMU1001001"
 # missing dates -> looked up in F4
-DBSdec20jun21$datacolheita[DBSdec20jun21$openhdsindividualId=="QU5PC1039002" & is.na(DBSdec20jun21$datacolheita)] <- "2021-03-04"
-DBSdec20jun21$datacolheita[DBSdec20jun21$openhdsindividualId=="QU5PC1039003" & is.na(DBSdec20jun21$datacolheita)] <- "2021-03-04"
-DBSdec20jun21$datacolheita[DBSdec20jun21$openhdsindividualId=="QU5PC1039005" & is.na(DBSdec20jun21$datacolheita)] <- "2021-03-04"
-DBSdec20jun21$datacolheita[DBSdec20jun21$openhdsindividualId=="QUMMU1009003" & is.na(DBSdec20jun21$datacolheita)] <- "2021-03-04"
+DBSinventory$datacolheita[DBSinventory$openhdsindividualId=="QU5PC1039002" & is.na(DBSinventory$datacolheita)] <- "2021-03-04"
+DBSinventory$datacolheita[DBSinventory$openhdsindividualId=="QU5PC1039003" & is.na(DBSinventory$datacolheita)] <- "2021-03-04"
+DBSinventory$datacolheita[DBSinventory$openhdsindividualId=="QU5PC1039005" & is.na(DBSinventory$datacolheita)] <- "2021-03-04"
+DBSinventory$datacolheita[DBSinventory$openhdsindividualId=="QUMMU1009003" & is.na(DBSinventory$datacolheita)] <- "2021-03-04"
 
 # remove duplicate entries
-dups <- which(duplicated(DBSdec20jun21%>%filter(!is.na(datacolheita))%>%select(openhdsindividualId,datacolheita)))
+dups <- which(duplicated(DBSinventory%>%filter(!is.na(datacolheita))%>%select(openhdsindividualId,datacolheita)))
 length(dups)
-DBSdec20jun21 <- DBSdec20jun21 %>% filter(!row.names(DBSdec20jun21) %in% dups)
+DBSinventory <- DBSinventory %>% filter(!row.names(DBSinventory) %in% dups)
 
 # remove unnecessary variables
-DBSdec20jun21 <- DBSdec20jun21 %>% select(openhdsindividualId, ziplocknr, datacolheita)
+DBSinventory <- DBSinventory %>% select(openhdsindividualId, ziplocknr, datacolheita)
 
 # limit to 28 June (from 29 June in DBS follow-up file)
-DBSdec20jun21 <- DBSdec20jun21 %>% filter(!is.na(datacolheita)&datacolheita<"2021-06-29") # only missing after 30 June
+DBSdec20jun21 <- DBSinventory %>% filter(!is.na(datacolheita)&datacolheita<"2021-06-29") # only missing after 30 June
 
 ## import file of the next 8 months of the study (29 June 21 to 22 Feb 22)
 DBSjun21feb22 <- read_excel("database/20220323/Seguimento das amostras Africover.xlsx", 
@@ -360,7 +423,8 @@ DBSjun21feb22$datacolheita[DBSjun21feb22$`Data de colheita`=="27/10/2021"] <- "2
 DBSjun21feb22$Comentários...9[DBSjun21feb22$`ID do participante`=="QUHMU1027005"&DBSjun21feb22$datacolheita=="2021-08-02"] <- "QUHMU1027005"
 DBSjun21feb22$`Data de recepção`[DBSjun21feb22$`ID do participante`=="QUHMU1027005"&DBSjun21feb22$datacolheita=="2021-08-02"] <- "2021-09-14"
 # there is one sample of participantID QU4CS3005005 received on 2021-09-29, which I can't find back, but there is a F4 entry for QU4CS3010001 on that same day, which I can't find in the follow-up. Probably typo.
-# remove the rows without datacolheita 
+# search the rows without datacolheita 
+DBSjun21feb22nocollectiondate <- subset(DBSjun21feb22, is.na(DBSjun21feb22$datacolheita)) # I checked them. QUHMU1027005 and QUMNM4014006 are mistakes (participants also entered a day before or after)
 DBSjun21feb22 <- subset(DBSjun21feb22, !is.na(DBSjun21feb22$datacolheita))
 
 # rename variables
@@ -410,7 +474,7 @@ DBSresults$participantID[DBSresults$participantID=="QUPC1009001"] <- "QU1PC10090
 DBSresults$participantID[DBSresults$participantID=="QUSCS3038006"] <- "QU5CS3038006"
 DBSresults$participantID[DBSresults$participantID=="QUUFCS1007005"] <- "QUFCS1007005"
 
-# Check if duplicated rows (i.e. same index and same HRC)
+# check duplicated rows
 dups = which(duplicated(DBSresults%>%select(participantID, plate, Result)))
 length(dups)
 # Remove duplicated rows
@@ -448,6 +512,12 @@ DBS <- DBS %>% select(-c("seq.x","seq.y"))
 write.table(DBS, file = "DBS.txt")
 write.csv(DBS, file = "DBS.csv")
 
+# describe n of participants
+nserosurvey <- DBS %>%
+  group_by(openhdsindividualId) %>%
+  summarise(n=n())
+
+
 ## ODK F4 serosurveys (short questionnaire completed at the time of the visit for sample collection)
 # F4_v1 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F4_Serovigilancia_v1_0.csv")
 # F4_v2 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F4_Serovigilancia_v2_0.csv")
@@ -470,7 +540,7 @@ F4$data_colheita[as.numeric(F4$time_F_to_collection)< -8] <- F4$data_formulario[
 # F4$data_colheita[(F4$time_F_to_collection*-1)>20] <- F4$data_formulario[(F4$time_F_to_collection*-1)>20]
 
 # remove duplicate entries in F4 odk
-# Check if duplicated rows (i.e. same index and same HRC)
+# check duplicated rows
 dups = which(duplicated(F4%>%select(openhdsindividualId,data_colheita)))
 length(dups)
 # Remove duplicated rows
