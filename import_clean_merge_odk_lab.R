@@ -14,6 +14,7 @@ demographicsSES <- read_excel("database/Demographics_database_unlocked.xlsx", sh
 demographicsSES$dob <- as.Date(demographicsSES$DOB, "%m/%d/%Y")
 agesexsubset <- subset(demographicsSES, select = c("openhdsindividualId","dob", "GENDER"))
 agesexsubset <- subset(agesexsubset, !is.na(dob))
+agesexsubset$test <- 1
 
 # another database for those without SES data
 baseline_demographics <- read_excel("database/Baseline_demographics.xlsx")
