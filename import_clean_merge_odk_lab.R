@@ -6,7 +6,7 @@
 # date last update: 2022-10-24
 
 # install/load packages
-pacman::p_load(readxl,dplyr,lubridate, ggplot2, usethis)
+pacman::p_load(readxl,excel.link,dplyr,lubridate,ggplot2,usethis)
 
 #### 1. DEMOGRAPHIC DATA ####
 # Import demographic & SES data
@@ -64,38 +64,47 @@ demographics <- merge(demographics, SES, by = "openhdsindividualId", all.x = T)
 #### 2. BASELINE AFRICOVER DATA ####
 # F1 baseline
 # household data
-F1a_v1 <- read_excel("database/20220609cleaned/AfriCoVER_F1a_Base_Agregado_familiar_v1.0.xls")
-F1a_v1$motive <- NA
-F1a_v1$especify_motive <- NA
-F1a_v1$is_consent_signed <- NA
-names(F1a_v1) <- tolower(names(F1a_v1))
-F1a_v2 <- read_excel("database/20220609cleaned/AfriCoVER_F1a_Base_Agregado_familiar_v2_0.xls")
-names(F1a_v2) <- tolower(names(F1a_v2))
-F1a <- rbind(F1a_v1, F1a_v2)
+F1a <- xl.read.file("database/final/F1a.xlsx", password = "africover_1")
 # remove entries without consent
 F1a <- subset(F1a, F1a$is_consent_signed != "nao")
+F1a <- subset(F1a, F1a$is_consent_signed != "Não")
 # check duplicated rows
-dups = which(duplicated(F1a%>%select(openhdslocationid))) # a single duplicate with just one answer different - keep the first
+dups = which(duplicated(F1a%>%select(locationId))) # a single duplicate with just one answer different - keep the first
 length(dups)
 # Remove duplicated rows
 F1a = F1a %>% filter(!row.names(F1a) %in% dups)
+
+# F1a_v1 <- read_excel("database/20220609cleaned/AfriCoVER_F1a_Base_Agregado_familiar_v1.0.xls")
+# F1a_v1$motive <- NA
+# F1a_v1$especify_motive <- NA
+# F1a_v1$is_consent_signed <- NA
+# names(F1a_v1) <- tolower(names(F1a_v1))
+# F1a_v2 <- read_excel("database/20220609cleaned/AfriCoVER_F1a_Base_Agregado_familiar_v2_0.xls")
+# names(F1a_v2) <- tolower(names(F1a_v2))
+# F1a <- rbind(F1a_v1, F1a_v2)
 # F1a$date_enrolled <- as.Date(F1a$start,"%m/%d/%Y") # 1733 missing
 # table(F1a$date_enrolled, useNA = "always")
 
 # individual participant data
-F1b_v1 <- read_excel("database/20220609cleaned/AfriCoVER_F1b_Base_Individual_v1_0.xls")
-names(F1b_v1) <- tolower(names(F1b_v1))
-F1b_v2 <- read_excel("database/20220609cleaned/AfriCoVER_F1b_Base_Individual_v2_0.xls")
-names(F1b_v1) <- names(F1b_v2)
-F1b <- rbind(F1b_v2, F1b_v1)
-F1b$date_enrolled <- as.Date(F1b$start,"%m/%d/%Y")
-table(F1b$date_enrolled, useNA = "always") # none missing
+F1b <- xl.read.file("database/final/F1b.xlsx", password = "africover_1")
+# remove entries without consent
+F1b <- subset(F1b, F1b$is_consent_signed != "nao")
+F1b <- subset(F1b, F1b$is_consent_signed != "Não")
 # check duplicated rows
-dups = which(duplicated(F1b%>%select(individualid, is_consent_signed)))
+dups = which(duplicated(F1b%>%select(individualId, is_consent_signed)))
 length(dups) # no full duplicates
 # check for duplicate participant IDs without all other variables
-dupsincomplete = which(duplicated(F1b%>%select(individualid)))
-length(dupsincomplete) # one duplicate (ID QUGAM2002013)
+dupsincomplete = which(duplicated(F1b%>%select(individualId)))
+length(dupsincomplete) # no duplmkcates anymore
+
+# F1b_v1 <- read_excel("database/20220609cleaned/AfriCoVER_F1b_Base_Individual_v1_0.xls")
+# names(F1b_v1) <- tolower(names(F1b_v1))
+# F1b_v2 <- read_excel("database/20220609cleaned/AfriCoVER_F1b_Base_Individual_v2_0.xls")
+# names(F1b_v1) <- names(F1b_v2)
+# F1b <- rbind(F1b_v2, F1b_v1)
+# F1b$date_enrolled <- as.Date(F1b$start,"%m/%d/%Y")
+
+
 # remove second entry for a single person, slightly different from the first
 F1b <- subset(F1b, date_enrolled!="2021-08-17"|individualid!="QUGAM2002013")
 table(F1b$is_consent_signed)
