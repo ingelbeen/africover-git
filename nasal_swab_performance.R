@@ -1,8 +1,10 @@
-#############################################################################
-# AFRICOVER                                                                 #
-# Use of nasal swabs in active Covid-19 surveillance with household visits  #
-# Diagnostic performance in function of 
-#############################################################################
+###############################################################################################################
+# AFRICOVER                                                                                                   #
+# Use of nasal swabs in active Covid-19 surveillance with household visits                                    #
+# Diagnostic performance in function of age, clinical signs/symptoms & time symptom onset to sample collection#
+###############################################################################################################
+# update XX/XX/2022
+
 
 # install/load packages
 pacman::p_load(readxl,dplyr,lubridate, ggplot2, ggthemes, scales, usethis, zoo)
