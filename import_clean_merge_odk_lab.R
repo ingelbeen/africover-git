@@ -3,18 +3,24 @@
 # Script to import, clean and merge ODK, HDSS demographic, and lab databases#
 #############################################################################
 # contributors: Catildo, Nilzio, Brecht
-# date last update: 2022-10-24
+# date last update: 2022-12-01
 
 # install/load packages
 pacman::p_load(readxl,excel.link,dplyr,lubridate,ggplot2,usethis)
 
 #### 1. DEMOGRAPHIC DATA ####
+# full cohort databases - not used as many mismatches
+# # individuals
+# individuals <- xl.read.file("database/final/individuals.xlsx", password = "africover_1")
+# cohort <- merge(individuals, F1b, by.x = "ID", by.y = "individualId")
+# # SES
+# SES <- xl.read.file("database/final/HDSS_StatusSocioEconomic_2018_full_DB.xlsx", password = "africover_1")
+
 # Import demographic & SES data
 demographicsSES <- read_excel("database/Demographics_database_unlocked.xlsx", sheet = "Sheet1") # no duplicates (checked)
 demographicsSES$dob <- as.Date(demographicsSES$DOB, "%m/%d/%Y")
 agesexsubset <- subset(demographicsSES, select = c("openhdsindividualId","dob", "GENDER"))
 agesexsubset <- subset(agesexsubset, !is.na(dob))
-agesexsubset$test <- 1
 
 # another database for those without SES data
 baseline_demographics <- read_excel("database/Baseline_demographics.xlsx")
@@ -61,74 +67,109 @@ demographics <- subset(demographics, dob!="2013-04-13"|openhdsindividualId!="QUL
 SES <- subset(demographicsSES, select = c("openhdsindividualId","ednivel_educacao", "SesScoreQnt"))
 demographics <- merge(demographics, SES, by = "openhdsindividualId", all.x = T)
 
+# export demographic db
+write.table(demographics, 'demographics.txt')
+
 #### 2. BASELINE AFRICOVER DATA ####
 # F1 baseline
 # household data
-F1a <- xl.read.file("database/final/F1a.xlsx", password = "africover_1")
+F1a <- xl.read.file("database/20221123/Africover F1a HH Households_full_DB.xlsx", password = "africover_1")
 # remove entries without consent
-F1a <- subset(F1a, F1a$is_consent_signed != "nao")
-F1a <- subset(F1a, F1a$is_consent_signed != "Não")
+F1a <- F1a %>%
+  filter(is.na(is_consent_signed)|is_consent_signed=="Sim")
 # check duplicated rows
-dups = which(duplicated(F1a%>%select(locationId))) # a single duplicate with just one answer different - keep the first
-length(dups)
+dups = which(duplicated(F1a%>%select(openhdslocationId))) # a single duplicate with just one answer different - keep the first
+length(dups) # HH QU7GJ1008 has some different values while same person interviewed twice
 # Remove duplicated rows
-F1a = F1a %>% filter(!row.names(F1a) %in% dups)
+F1a <- F1a %>% filter(!row.names(F1a) %in% dups) 
 
-# F1a_v1 <- read_excel("database/20220609cleaned/AfriCoVER_F1a_Base_Agregado_familiar_v1.0.xls")
-# F1a_v1$motive <- NA
-# F1a_v1$especify_motive <- NA
-# F1a_v1$is_consent_signed <- NA
-# names(F1a_v1) <- tolower(names(F1a_v1))
-# F1a_v2 <- read_excel("database/20220609cleaned/AfriCoVER_F1a_Base_Agregado_familiar_v2_0.xls")
-# names(F1a_v2) <- tolower(names(F1a_v2))
-# F1a <- rbind(F1a_v1, F1a_v2)
+F1a_v1 <- read_excel("database/20220609cleaned/AfriCoVER_F1a_Base_Agregado_familiar_v1.0.xls")
+F1a_v1$motive <- NA
+F1a_v1$especify_motive <- NA
+F1a_v1$is_consent_signed <- NA
+names(F1a_v1) <- tolower(names(F1a_v1))
+F1a_v2 <- read_excel("database/20220609cleaned/AfriCoVER_F1a_Base_Agregado_familiar_v2_0.xls")
+names(F1a_v2) <- tolower(names(F1a_v2))
+F1a_appended <- rbind(F1a_v1, F1a_v2)
+dups = which(duplicated(F1a_appended%>%select(openhdslocationid))) # a single duplicate with just one answer different - keep the first
+length(dups)
+F1a_appended = F1a_appended %>% filter(!row.names(F1a_appended) %in% dups) 
+F1a_mismatch = merge(F1a_appended, F1a, by.x = "openhdslocationid", by.y = "openhdslocationId", all = T) 
+F1a_mismatch <- F1a_mismatch %>%
+  filter(is.na(F1a_mismatch$start.x)|is.na(F1a_mismatch$start.y))
 # F1a$date_enrolled <- as.Date(F1a$start,"%m/%d/%Y") # 1733 missing
 # table(F1a$date_enrolled, useNA = "always")
 
-# individual participant data
-F1b <- xl.read.file("database/final/F1b.xlsx", password = "africover_1")
+# individual participant data 
+F1b <- xl.read.file("database/20221123/Africover F1b Individuals_full_DB.xlsx", password = "africover_1")
+# remove empty rows
+F1b <- F1b %>%
+  filter(!is.na(individualid))
 # remove entries without consent
-F1b <- subset(F1b, F1b$is_consent_signed != "nao")
-F1b <- subset(F1b, F1b$is_consent_signed != "Não")
-# check duplicated rows
-dups = which(duplicated(F1b%>%select(individualId, is_consent_signed)))
+F1b <- F1b %>%
+  filter(is.na(is_consent_signed)|is_consent_signed=="Sim")
+# check duplicated participant IDs
+dups = which(duplicated(F1b%>%select(individualid)))
 length(dups) # no full duplicates
+# list of duplicates to check 
+# QU2PC1009007 -> probably twice same person; remove 1st, uuid:bb9d8c2c-f4b0-4ef6-a8c2-6dac0fba3d8c)
+F1b <- F1b %>% filter(Key!="uuid:bb9d8c2c-f4b0-4ef6-a8c2-6dac0fba3d8c")
+# QUGAM2002013 -> probably twice same person: remove 2nd
+F1b <- F1b %>% filter(Key!="uuid:f96a4cb2-2967-4050-80f8-bf9120730e30")
+# QUHCS1011003 -> probably twice same person: remove 2nd
+F1b <- F1b %>% filter(Key!="uuid:8e6e8f1c-6efe-466b-af16-9b1d435509e9")
+# QUHNM1026004
+F1b$individualid[F1b$Key=="uuid:be75f15f-fc07-4cf4-9796-2b8eef688d5b"] <- "QUHNM1026005"
+# QULAM2008003 -> with this household, I don't quite know what to do. could we check them still?
+# QULAM2008004
+# QULAM2008005
+# QULAM2008006
+# QULAM2008007
+# QULAM2008008
+# QULAM2036002 -> probably twice same person, but the second time (when also including other HH members) indicated to be HIV+
+F1b <- F1b %>% filter(Key!="uuid:26d0031c-5d65-4924-829b-2cc1893be27e")
+# QULNM3022012 -> twice exactly the same values
+F1b <- F1b %>% filter(Key!="uuid:d08b8aa6-7b4c-4430-a66f-239919d368a6")
+# QUNMU1001003 -> unlikely for this age (35 to have hypertension) while older man was missed
+F1b$individualid[F1b$Key=="uuid:b15a4fa8-c106-4df3-92b7-aad747012e63"] <- "QUNMU1001001"
 # check for duplicate participant IDs without all other variables
-dupsincomplete = which(duplicated(F1b%>%select(individualId)))
-length(dupsincomplete) # no duplmkcates anymore
+F1b <- F1b %>% filter(!row.names(F1b) %in% dups) 
 
+# I checked so that v1 and v2 combined is the same as the final database => it is OK
 # F1b_v1 <- read_excel("database/20220609cleaned/AfriCoVER_F1b_Base_Individual_v1_0.xls")
 # names(F1b_v1) <- tolower(names(F1b_v1))
 # F1b_v2 <- read_excel("database/20220609cleaned/AfriCoVER_F1b_Base_Individual_v2_0.xls")
 # names(F1b_v1) <- names(F1b_v2)
 # F1b <- rbind(F1b_v2, F1b_v1)
 # F1b$date_enrolled <- as.Date(F1b$start,"%m/%d/%Y")
-
-
 # remove second entry for a single person, slightly different from the first
-F1b <- subset(F1b, date_enrolled!="2021-08-17"|individualid!="QUGAM2002013")
-table(F1b$is_consent_signed)
+# F1b <- subset(F1b, date_enrolled!="2021-08-17"|individualid!="QUGAM2002013")
 
 # remove unnecessary vars
-F1b <- F1b %>% select(-c("start", "end", "key", "fieldworkerid", "visitid", "instanceid", "processedbymirth","submissiondate","especify_motive"))
-F1a <- F1a %>% select(-c("start", "end", "date_enrolled", "key","openhdsvisitid","openhdsfieldworkerid", "openhdsindividualid","is_consent_signed","motive","especify_motive","metainstanceid","processedbymirth"))
+F1a <- F1a %>% select(-c("start", "openhdsvisitId", "openhdsfieldWorkerId", "openhdsindividualId", "is_consent_signed", "motive","especify_motive", "key"))
+F1b <- F1b %>% select(-c("visitid", "fieldworkerid", "is_consent_signed", "motive", "especify_motive", "Key", "processedbymirth","instanceid"))  
 
 # merge F1a & F1b
-names(F1b)[1] <- "openhdslocationid"
-F1 <- merge(F1b, F1a, by="openhdslocationid", all.x = T)
+F1 <- merge(F1b, F1a, by.x = "locationid", by.y = "openhdslocationId", all = T)
 
 
-# check HH with no individual (F1b) data -> for 25 participants
+# check HH with no individual (F1b) data -> 431 households without any individual member?
 F1awithoutF1b <- F1 %>%
   filter(is.na(mass_bus)) %>%
-  select(individualid)
+  select(locationid)
 write.table(F1awithoutF1b, "F1awithoutF1b.txt")
+
+# check individual with no HH data -> 35 members for which no HH data
+F1bwithoutF1a <- F1 %>%
+  filter(is.na(bedroom_sharing)) %>%
+  select(individualid)
+write.table(F1bwithoutF1a, "F1bwithoutF1a.txt")
 
 # merge with demographic data
 participants <- merge(demographics, F1, by.x = "openhdsindividualId", by.y = "individualid", all.y = T)
-dups = which(duplicated(participants%>%select(openhdsindividualId))) # checked, but no duplicates anymore
 
-
+# remove lines without participant data (F1a but no F1b)
+participants <- participants %>% filter(!is.na(openhdsindividualId))
 str(participants)
 
 # check those for which no demographic or SES data
@@ -146,7 +187,8 @@ participants$age[participants$age<0] <- 0
 agestocheck <- participants %>%
   filter(age>90 | age<0) %>%
   select(dob, age, openhdsindividualId)
-write.table(agestocheck,"agestocheck.txt") # 21 over 90 yo to check STILL ADAPT THESE DOB WHEN VERIFIED AND CORRECTED
+write.table(agestocheck,"agestocheck.txt") # still 6 over 100 yo, but one 101 (plausible) and 5 121 (missing)
+participants$age[participants$age==121] <- NA # 121 because dob entered was 01-01-1900
 
 participants$agegr[participants$age<18] <- "0-17"
 participants$agegr[participants$age>17&participants$age<50] <- "18-49"
@@ -156,17 +198,20 @@ table(participants$sex, useNA = "always")
 
 # list of those without age nor sex
 missingage_sex <- participants %>%
-  filter(is.na(sex)) %>%
+  filter(is.na(GENDER)) %>%
   select(openhdsindividualId)
 write.table(missingage_sex, "missingage_sex.txt")
 
 # F3 weight & height
-F3 <- read_excel("database/20220609cleaned/AfriCoVER_F3_Medicoes_fisicas.xls")
+F3 <- xl.read.file("database/20221123/Africover F3 Physical measurements_full_DB.xlsx", password = "africover_1")
+# remove obervations without collected weight, height, or armcircumference
+F3 <- F3 %>% filter(was_height_measured=="Sim"|was_weighed=="Sim"|was_arm_circumference=="Sim")
+
 # check if duplicated rows 
 dups = which(duplicated(F3%>%select(individualid, height, arm_circumference, weight)))
 length(dups)
 # Remove duplicated rows
-F3 = F3 %>% filter(!row.names(F3) %in% dups)
+F3 <- F3 %>% filter(!row.names(F3) %in% dups)
 # make a dataset that combines observations of weight, height and MUAC during different visits (if weight is collected during a different visit than height)
 F3_weightheightcombined <- F3 %>%
   filter(was_weighed=="Sim"|was_arm_circumference=="Sim"|was_height_measured=="Sim")%>%
@@ -189,29 +234,25 @@ write.table(list_weight_height_problems, file = "list_weight_height_problems.txt
 
 # import updates of comorbidities (F7), such as new diagnoses of HIV, chronic conditions, etc., once we have a version with factor variables as strings
 F7 <- read_excel("database/20220609cleaned/AfriCoVER_F7_Comorbididades limpo.xls")
-#
-
-
-
-
-# export participant database FOR NOW SIMPLIFIED WITHOUT F3 - SHOULD BE CHANGED LATER ON
-write.csv(participants_simplified, file = "participants_simplified.csv")
 
 # describe number of participants and HHs
 count(participants)
-table(participants$agegr)
+table(participants$agegr, useNA = "always")
 nHH <- participants %>%
-  group_by(openhdslocationid) %>%
+  group_by(locationid) %>%
   summarise(n=n())
-  
+count(nHH) # 1489
+mean(nHH$n) # mean HH size = 4.03
+
 #### 3. ACTIVE SURVEILLANCE FOR POSSIBLE CASES ####
 ## 3.1 ODK possible case reports
 # F5_v1 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F5_Possivel_caso_v1_0.csv")
 # F5_v2 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F5_Possivel_caso_v2_0.csv")
 # F5 <- rbind(F5_v1, F5_v2)
-F5 <- read_excel("database/20220323/F5.xlsx")
+F5 <- xl.read.file("database/20221123/Africover F5 Possible case_full_DB.xlsx", password = "africover_1")
+
 # check duplicated rows
-dups = which(duplicated(F5%>%select(`openhds-individualId`, `situacao_clinica-data_inicio_sintomas`, `situacao_clinica-symptoms_start_date`, `nasal_swab_data-nasal_swab_date`)))
+dups = which(duplicated(F5%>%select('individualid', 'symptoms_start_date', 'nasal_swab_date')))
 length(dups)
 # Remove duplicated rows
 F5 = F5 %>% filter(!row.names(F5) %in% dups)
