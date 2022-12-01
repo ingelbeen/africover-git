@@ -3,7 +3,7 @@
 # Script to import, clean and merge ODK, HDSS demographic, and lab databases#
 #############################################################################
 # contributors: Catildo, Nilzio, Brecht
-# date last update: 2022-12-01
+# date last update: 2022-10-26
 
 # install/load packages
 pacman::p_load(readxl,excel.link,dplyr,lubridate,ggplot2,usethis)
@@ -222,6 +222,7 @@ hist(F3_weightheightcombined$height)
 # BMI
 F3_weightheightcombined$BMI <- round(F3_weightheightcombined$weight/((F3_weightheightcombined$height/100)^2),1)
 hist(F3_weightheightcombined$BMI)
+table(F3_weightheightcombined$BMI)
 
 # merge participant baseline data and weight and height
 participants <- merge(participants, F3_weightheightcombined, by.x = "openhdsindividualId", by.y = "individualid", all.x = T) # only 3684 out of 6807
@@ -250,12 +251,35 @@ mean(nHH$n) # mean HH size = 4.03
 # F5_v2 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F5_Possivel_caso_v2_0.csv")
 # F5 <- rbind(F5_v1, F5_v2)
 F5 <- xl.read.file("database/20221123/Africover F5 Possible case_full_DB.xlsx", password = "africover_1")
-
+# remove when no participant ID entered
+F5 <- F5 %>% filter(!is.na(individualid))
+F5simpl <- F5 %>% select(start,individualid,is_consent_signed,symptoms,data_inicio_sintomas,fever,hospitalization,nasal_swab_date,sample_was_taken,key)
+# remove dupicates & multiple entries for the same disease episode
+F5 <- F5 %>% filter(key!="uuid:df98baff-a221-4049-b08b-56ca22356dfb"&
+                      key!="uuid:02d44b44-76d0-454b-b36e-f0dbbabd96e9"&
+                      key!="uuid:4aecede0-ce7b-443f-ac15-47a3cb3b5997"&
+                      key!="uuid:c08fbc7a-f81b-4789-b9d1-e769700f4d87"&
+                      key!="uuid:d0ebb5ef-c9e9-458e-90af-5d5dcbf2660c"&
+                      key!="uuid:f8d15b19-4abd-40ea-a22e-3140dd790459"& #removing the earliest entry because no symptoms recorded then
+                      key!="uuid:154f4808-d7b3-4125-86d8-666b5199d9d6"&
+                      key!="uuid:ba5098a3-a67d-4ee4-9182-96394f7e2762"&
+                      key!="uuid:b572068e-6476-47f1-9dc9-f9b8b1bb63bb"&
+                      key!="uuid:633a7028-9b50-47db-b7a7-ecb8fa359ac3"& #four entries of the same patient, with few days difference and date of onset only recorded in one
+                      key!="uuid:a91be661-e979-40e3-8255-6425e1993547"&
+                      key!="uuid:bb971e50-9e8d-4fdc-9240-fa5ecba76668"& #same episode
+                      key!="uuid:90a94c80-f828-4499-b29a-dbbcc6222fa0"&
+                      key!="uuid:6492d60b-a0e3-481b-81a8-4fd4d705c1f8"&
+                      key!="uuid:073c4f27-025b-4ab2-9cc5-408c1701ef16"& #2nd time on same episode
+                      key!="uuid:c9464bb1-8e2a-4cfb-a0e5-0d014dbc433b"& #2nd time on same episode
+                      key!="uuid:af45bf14-2f8c-4153-bba9-ddc93cf5ecb0"& #3rd time
+                      key!="uuid:060eb477-1fb8-441a-ae36-0557b59b35ee"&
+                      key!="uuid:642e9e6e-f474-41e6-9838-7c05f3f6bc81"&
+                      key!="uuid:e6b0473d-d0f5-4b86-b965-18429f303d2b"&
+                      key!="uuid:8646e326-296b-454f-b9ea-2bdf61e002a7")
 # check duplicated rows
-dups = which(duplicated(F5%>%select('individualid', 'symptoms_start_date', 'nasal_swab_date')))
-length(dups)
+dups = which(duplicated(F5%>%select('individualid', 'start')))
 # Remove duplicated rows
-F5 = F5 %>% filter(!row.names(F5) %in% dups)
+F5 <- F5 %>% filter(!row.names(F5) %in% dups)
 # create var for ID and date to link to results
 F5$datacolheita <- as.Date(F5$`nasal_swab_data-nasal_swab_date`) # 64 no sample collection date, in most cases because tested at hospital
 table(F5$`nasal_swab_data-specify_reason_for_not_sampling`)
@@ -320,7 +344,8 @@ write.csv(possiblecases_participants, file = "possiblecases_participants.csv")
 
 ## 3.4 F2 active surveillance follow-up
 # household part
-F2 <- read_excel("database/20220323/F2.xlsx")
+F2 <- xl.read.file("database/20221123/Africover F2 Follow Up_full_DB.xlsx", password = "africover_1")
+
 # check duplicated rows
 dups = which(duplicated(F2%>%select(start, openhdsindividualId, visit_confirmationcontact_type, visit_confirmationcontact_date, KEY)))
 length(dups)
