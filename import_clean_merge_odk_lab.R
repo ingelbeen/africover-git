@@ -652,6 +652,11 @@ FU <- FU %>% select(start, locationId, indivIdualId, visit_done, contact_type, c
 # contactdate to date format
 FU$contact_date <- as.Date(FU$contact_date)
 
+# relabel values to english
+FU$respiratory_symptoms[FU$respiratory_symptoms=="Sim"] <- "yes"
+FU$respiratory_symptoms[FU$respiratory_symptoms=="Não"] <- "no"
+FU$respiratory_symptoms[FU$respiratory_symptoms=="Não sabe"] <- "no"
+
 # remove planned visits that were not done
 FU <- FU %>% filter(FU$visit_done=="Sim")
 
@@ -979,22 +984,3 @@ DBS_collected_several <- subset(DBS_collected_several, DBS_collected_several$n>1
 # add data de colheita -> merge on ID and round
 DBS_collected_several_datacolheita <- merge(DBS_collected_several, DBS_inventorio_INS, by = c("openhdsindividualId","round"), all.x = T)
 write.csv(DBS_collected_several_datacolheita, file = "DBS_collected_several_datacolheita.csv")
-
-# descriptive
-# DBS inclusions_by_age
-serosurveymerged_short_demographics$age <- round(as.numeric((serosurveymerged_short_demographics$data_da_colheita - as.Date(serosurveymerged_short_demographics$`individualInfo:dateOfBirth`)))/365.25,0)
-serosurveymerged_short_demographics$agegr[serosurveymerged_short_demographics$age<18] <- "<18"
-serosurveymerged_short_demographics$agegr[serosurveymerged_short_demographics$age>17&serosurveymerged_short_demographics$age<50] <- "18-49"
-serosurveymerged_short_demographics$agegr[serosurveymerged_short_demographics$age>49] <- ">/=50"
-
-table(serosurveymerged_short_demographics$age)
-# number of visits per DBS participant
-DBSparticipants <- serosurveymerged_short_demographics %>%
-  group_by(openhdsindividualId, age, agegr) %>%
-  summarise(n=n())
-DBSparticipants
-count(DBSparticipants)
-table(DBSparticipants$n)
-# age distribution
-hist(DBSparticipants$age, breaks = 20, main = NULL, xlab = "Age (years)")
-prop.table(table(DBSparticipants$agegr))
