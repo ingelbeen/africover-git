@@ -3,7 +3,7 @@
 # Script to import, clean and merge ODK, HDSS demographic, and lab databases#
 #############################################################################
 # contributors: Catildo, Nilzio, Brecht
-# date last update: 2022-10-26
+# date last update: 2022-12-01
 
 # install/load packages
 pacman::p_load(readxl,excel.link,dplyr,lubridate,ggplot2,usethis)
@@ -189,10 +189,6 @@ agestocheck <- participants %>%
   select(dob, age, openhdsindividualId)
 write.table(agestocheck,"agestocheck.txt") # still 6 over 100 yo, but one 101 (plausible) and 5 121 (missing)
 participants$age[participants$age==121] <- NA # 121 because dob entered was 01-01-1900
-
-participants$agegr[participants$age<18] <- "0-17"
-participants$agegr[participants$age>17&participants$age<50] <- "18-49"
-participants$agegr[participants$age>49] <- "50+"
 table(participants$agegr, useNA = "always")
 table(participants$sex, useNA = "always")
 
@@ -222,10 +218,12 @@ hist(F3_weightheightcombined$height)
 # BMI
 F3_weightheightcombined$BMI <- round(F3_weightheightcombined$weight/((F3_weightheightcombined$height/100)^2),1)
 hist(F3_weightheightcombined$BMI)
-table(F3_weightheightcombined$BMI)
 
 # merge participant baseline data and weight and height
 participants <- merge(participants, F3_weightheightcombined, by.x = "openhdsindividualId", by.y = "individualid", all.x = T) # only 3684 out of 6807
+write.csv(participants, "participants.csv")
+participantssimpl <- participants %>% select(locationid, openhdsindividualId)
+write.csv(participantssimpl, "participantssimpl.csv")
 
 # identify those with weight and height that doesn't make sense
 list_weight_height_problems <- participants %>%
@@ -236,65 +234,68 @@ write.table(list_weight_height_problems, file = "list_weight_height_problems.txt
 # import updates of comorbidities (F7), such as new diagnoses of HIV, chronic conditions, etc., once we have a version with factor variables as strings
 F7 <- read_excel("database/20220609cleaned/AfriCoVER_F7_Comorbididades limpo.xls")
 
-# describe number of participants and HHs
-count(participants)
-table(participants$agegr, useNA = "always")
-nHH <- participants %>%
-  group_by(locationid) %>%
-  summarise(n=n())
-count(nHH) # 1489
-mean(nHH$n) # mean HH size = 4.03
-
 #### 3. ACTIVE SURVEILLANCE FOR POSSIBLE CASES ####
 ## 3.1 ODK possible case reports
 # F5_v1 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F5_Possivel_caso_v1_0.csv")
 # F5_v2 <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/database/completed 20220420/AfriCoVER_F5_Possivel_caso_v2_0.csv")
 # F5 <- rbind(F5_v1, F5_v2)
 F5 <- xl.read.file("database/20221123/Africover F5 Possible case_full_DB.xlsx", password = "africover_1")
-# remove when no participant ID entered
-F5 <- F5 %>% filter(!is.na(individualid))
-F5simpl <- F5 %>% select(start,individualid,is_consent_signed,symptoms,data_inicio_sintomas,fever,hospitalization,nasal_swab_date,sample_was_taken,key)
-# remove dupicates & multiple entries for the same disease episode
-F5 <- F5 %>% filter(key!="uuid:df98baff-a221-4049-b08b-56ca22356dfb"&
-                      key!="uuid:02d44b44-76d0-454b-b36e-f0dbbabd96e9"&
-                      key!="uuid:4aecede0-ce7b-443f-ac15-47a3cb3b5997"&
-                      key!="uuid:c08fbc7a-f81b-4789-b9d1-e769700f4d87"&
-                      key!="uuid:d0ebb5ef-c9e9-458e-90af-5d5dcbf2660c"&
-                      key!="uuid:f8d15b19-4abd-40ea-a22e-3140dd790459"& #removing the earliest entry because no symptoms recorded then
-                      key!="uuid:154f4808-d7b3-4125-86d8-666b5199d9d6"&
-                      key!="uuid:ba5098a3-a67d-4ee4-9182-96394f7e2762"&
-                      key!="uuid:b572068e-6476-47f1-9dc9-f9b8b1bb63bb"&
-                      key!="uuid:633a7028-9b50-47db-b7a7-ecb8fa359ac3"& #four entries of the same patient, with few days difference and date of onset only recorded in one
-                      key!="uuid:a91be661-e979-40e3-8255-6425e1993547"&
-                      key!="uuid:bb971e50-9e8d-4fdc-9240-fa5ecba76668"& #same episode
-                      key!="uuid:90a94c80-f828-4499-b29a-dbbcc6222fa0"&
-                      key!="uuid:6492d60b-a0e3-481b-81a8-4fd4d705c1f8"&
-                      key!="uuid:073c4f27-025b-4ab2-9cc5-408c1701ef16"& #2nd time on same episode
-                      key!="uuid:c9464bb1-8e2a-4cfb-a0e5-0d014dbc433b"& #2nd time on same episode
-                      key!="uuid:af45bf14-2f8c-4153-bba9-ddc93cf5ecb0"& #3rd time
-                      key!="uuid:060eb477-1fb8-441a-ae36-0557b59b35ee"&
-                      key!="uuid:642e9e6e-f474-41e6-9838-7c05f3f6bc81"&
-                      key!="uuid:e6b0473d-d0f5-4b86-b965-18429f303d2b"&
-                      key!="uuid:8646e326-296b-454f-b9ea-2bdf61e002a7")
 # check duplicated rows
-dups = which(duplicated(F5%>%select('individualid', 'start')))
+dups = which(duplicated(F5%>%select('individualid', 'symptoms_start_date', 'nasal_swab_date')))
+length(dups)
 # Remove duplicated rows
-F5 <- F5 %>% filter(!row.names(F5) %in% dups)
+F5 = F5 %>% filter(!row.names(F5) %in% dups)
+
+# remove observations of persons not recorded at baseline as participant
+F5 <- F5 %>% filter(individualid!="QU3PC1009001")
+F5 <- F5 %>% filter(individualid!="QUHNM1005005")
+F5 <- F5 %>% filter(start!="2021-05-07 12:19:00") # recorded twice, with this record less complete
+F5 <- F5 %>% filter(start!="2021-02-11 12:36:00") # recorded twice, with this record less complete
+
 # create var for ID and date to link to results
-F5$datacolheita <- as.Date(F5$`nasal_swab_data-nasal_swab_date`) # 64 no sample collection date, in most cases because tested at hospital
+F5$datacolheita <- as.Date(F5$nasal_swab_date) # 64 no sample collection date, in most cases because tested at hospital
 table(F5$`nasal_swab_data-specify_reason_for_not_sampling`)
 
+# corrections after checks from lab results (e.g., date missing in F5 but entered in result db) 
+F5$datacolheita[F5$individualid=="QU7CS3036001"] <- "2022-02-17"
+F5$datacolheita[F5$individualid=="QU7PC1029003"] <- "2021-03-15"
+F5$datacolheita[F5$individualid=="QUFMU1019001"&F5$datacolheita=="2021-07-08"] <- "2021-07-26"
+F5$datacolheita[F5$individualid=="QUNRT1005002"&F5$datacolheita=="2021-07-21"] <- "2021-07-25"
+F5$datacolheita[F5$individualid=="QUFMU1019001"&F5$datacolheita=="2021-07-08"] <- "2021-07-26"
+F5$datacolheita[F5$individualid=="QUHCS1011001"&F5$datacolheita=="2021-01-07"] <- "2021-01-08"
+F5$datacolheita[F5$individualid=="QU7GJ1015001"&F5$datacolheita=="2021-02-12"] <- "2021-02-17"
+F5$datacolheita[F5$individualid=="QULRT1041002"&F5$datacolheita=="2021-05-06"] <- "2021-04-12"
+F5$datacolheita[F5$individualid=="QUNRT1005002"&F5$datacolheita=="2021-07-22"] <- "2021-07-25"
+F5$datacolheita[F5$individualid=="QULPC1073004"&is.na(F5$datacolheita)] <- "2021-02-11"
+F5$datacolheita[F5$individualid=="QUFQM1005005"] <- "2022-02-17"
+F5$datacolheita[F5$individualid=="QUNRT1004003"&is.na(F5$datacolheita)] <- "2021-02-17"
+F5$datacolheita[F5$individualid=="QUNRT1004006"] <- "2022-02-17"
+F5$datacolheita[F5$individualid=="QUNGJ1011008"] <- "2022-02-23"
+F5$datacolheita[F5$individualid=="QUNRT1003005"] <- "2022-02-23"
+F5$datacolheita[F5$individualid=="QU7QM1046005"] <- "2022-02-25"
+F5$datacolheita[F5$individualid=="QU7CS3024001"] <- "2022-03-08"
+
+# if datacolheita missing, yet a sample was collected, use dstart
+F5$dstart <- as.Date(F5$start)
+F5$datacolheita[is.na(F5$datacolheita)&F5$sample_was_taken!="Não"] <- F5$dstart[is.na(F5$datacolheita)&F5$sample_was_taken!="Não"]
+
+# create a var combining collection date and ID
+F5$dateID <- paste(F5$datacolheita, F5$individualid)
+
+# simplified version
+F5datesIDs <- F5 %>% select(individualid, symptoms, sample_was_taken, datacolheita, dateID)
+
 ## 3.2 nasal swab lab results
+# manually entered database
 nasalswabresults <- read_excel("database/completed 20220420/AfriCoVER_nasalswabresults_20220420.xlsx", sheet = "Detalhes dos Resultados ", 
                                  col_types = c("text", "text", "text", "text", "date", "date", "numeric", "text", "date", "text", "date", "date", 
                                                "text", "text", "text", "date", "text", "text"))
 hist(nasalswabresults$datacolheita, breaks = 20)
 nasalswabresults$datacolheita <- as.Date(nasalswabresults$datacolheita)
 nasalswabresults$openhdsindividualId <- nasalswabresults$`Member ID`
+nasalswabresults$Resultado <- tolower(nasalswabresults$Resultado)
 
-## 3.3 merge lab results and ODK F4
-# clean observations to match between both db
-F5$datacolheita[F5$`openhds-individualId`=="QU0QM1004005"] <- "2022-02-01" #date missing in F5
+# discrepant codes, dates, and results
 nasalswabresults$openhdsindividualId[nasalswabresults$openhdsindividualId=="QU2CS3002006"&nasalswabresults$datacolheita=="2021-01-13"] <- "QU2CS3002005" #found in F5 HH member swabbed the previous day
 nasalswabresults$datacolheita[nasalswabresults$openhdsindividualId=="QU2CS3002005"&nasalswabresults$datacolheita=="2021-01-13"]  <- "2021-01-14" #found in F5 HH member swabbed the previous day
 nasalswabresults$datacolheita[nasalswabresults$openhdsindividualId=="QU3MU1010001"&nasalswabresults$datacolheita=="2021-03-17"]  <- "2021-03-16" #found in same person but swabbed the previous day
@@ -323,69 +324,398 @@ nasalswabresults$openhdsindividualId[nasalswabresults$openhdsindividualId=="QU5Q
 nasalswabresults <- subset(nasalswabresults, nasalswabresults$openhdsindividualId!="QU5QM1033005") # no F5 record, no similar code the same day
 nasalswabresults$datacolheita[nasalswabresults$openhdsindividualId=="QU5RT1102002"&nasalswabresults$datacolheita=="2021-06-29"]  <- "2021-06-25" # found in F5 same person but swabbed day before
 nasalswabresults$openhdsindividualId[nasalswabresults$openhdsindividualId=="QU7CS3023007"] <- "QU7CS3026002" # typo in ID
+nasalswabresults$datacolheita[nasalswabresults$openhdsindividualId=="QUF000001002"&nasalswabresults$datacolheita=="2021-03-17"]  <- "2021-03-16" #found in F5 same person but swabbed few days before
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-07-19"&nasalswabresults$openhdsindividualId=="QU5RT1102005"] <- "2021-06-25"
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-04-06"&nasalswabresults$openhdsindividualId=="QUFQM1007002"] <- "2021-04-05"
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-08-18"&nasalswabresults$openhdsindividualId=="QUGAM2002001"] <- "2021-08-17"
+nasalswabresults$openhdsindividualId[nasalswabresults$openhdsindividualId=="QU3PC1029007"] <- "QU3PC1019007" # typo in ID, same date in F5
+nasalswabresults$Resultado[nasalswabresults$datacolheita=="2021-07-12"&nasalswabresults$openhdsindividualId=="QU0GJ1003001"] <- "negativo" # ugd database probably more reliable
+nasalswabresults <- subset(nasalswabresults, nasalswabresults$openhdsindividualId!="QUOMU1045007") # no F5 nor participant record
+nasalswabresults$openhdsindividualId[nasalswabresults$openhdsindividualId=="QUNM4006001"] <- "QUNNM4006001" # typo in ID, same date in F5
+nasalswabresults$openhdsindividualId[nasalswabresults$openhdsindividualId=="QUMPC10100002"] <- "QUMPC1010002" # typo in ID
+nasalswabresults$openhdsindividualId[nasalswabresults$openhdsindividualId=="QUAGAM2002005"] <- "QUGAM2002005" # typo in ID
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-04-14"&nasalswabresults$openhdsindividualId=="QUGAM2002005"] <- "2021-04-13"
+nasalswabresults <- subset(nasalswabresults, nasalswabresults$openhdsindividualId!="QUE3PC1009001") # no F5 nor participant record
+nasalswabresults$openhdsindividualId[nasalswabresults$openhdsindividualId=="QUHMU10300012"] <- "QUHMU1030012" 
+nasalswabresults$openhdsindividualId[nasalswabresults$openhdsindividualId=="QUHMU103004"] <- "QUHMU1030004" 
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-03-13"&nasalswabresults$openhdsindividualId=="QU7CS3031001"] <- "2021-03-12"
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-03-13"&nasalswabresults$openhdsindividualId=="QU7CS3031016"] <- "2021-03-12"
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-02-19"&nasalswabresults$openhdsindividualId=="QU7MU1017003"] <- "2021-02-18"
+nasalswabresults <- subset(nasalswabresults, nasalswabresults$openhdsindividualId!="QU7NM4011004") # no F5 nor results
+nasalswabresults <- subset(nasalswabresults, nasalswabresults$openhdsindividualId!="QU5RT1102005"|nasalswabresults$Resultado!="si") # no F5 nor results
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-03-09"&nasalswabresults$openhdsindividualId=="QU7PC1020002"] <- "2021-03-08"
+nasalswabresults$openhdsindividualId[nasalswabresults$openhdsindividualId=="QU7QJ1046003"] <- "QU7GJ1046003" 
+nasalswabresults$openhdsindividualId[nasalswabresults$openhdsindividualId=="QU7QJ1052006"] <- "QU7GJ1052006" 
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-03-13"&nasalswabresults$openhdsindividualId=="QU7RT1023003"] <- "2021-03-12"
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-07-27"&nasalswabresults$openhdsindividualId=="QUGQM1005006"] <- "2021-08-06" 
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2022-02-01"&nasalswabresults$openhdsindividualId=="QULCS3010001"] <- "2022-02-02" 
+nasalswabresults$openhdsindividualId[nasalswabresults$datacolheita=="2020-12-17"&nasalswabresults$openhdsindividualId=="QUGQM1006009"] <- "QUGQM1006002" 
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2020-12-22"&nasalswabresults$openhdsindividualId=="QUBRT1003007"] <- "2020-12-21" 
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-01-06"&nasalswabresults$openhdsindividualId=="QUMMU1006002"] <- "2021-01-05" 
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-01-07"&nasalswabresults$openhdsindividualId=="QUHMU1002005"] <- "2021-01-06" 
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-01-20"&nasalswabresults$openhdsindividualId=="QUIQM2039001"] <- "2021-01-06" 
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-01-14"&nasalswabresults$openhdsindividualId=="QUINM1012001"] <- "2021-01-13" 
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-01-18"&nasalswabresults$openhdsindividualId=="QUGPC1001001"] <- "2021-01-15" 
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-01-25"&nasalswabresults$openhdsindividualId=="QUECS2003001"] <- "2021-01-23" 
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-01-25"&nasalswabresults$openhdsindividualId=="QUINM1014004"] <- "2021-01-23" 
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-01-28"&nasalswabresults$openhdsindividualId=="QUGQM1006002"] <- "2021-01-27" 
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-01-28"&nasalswabresults$openhdsindividualId=="QUNQM1001001"] <- "2021-01-27" 
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-02-11"&nasalswabresults$openhdsindividualId=="QULPC1073004"] <- "2021-02-10" 
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-02-23"&nasalswabresults$openhdsindividualId=="QULPC1039001"] <- "2021-02-22" 
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-03-18"&nasalswabresults$openhdsindividualId=="QU7RT1013006"] <- "2021-03-19" 
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-07-19"&nasalswabresults$openhdsindividualId=="QU5RT1102005"] <- "2021-06-25"
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-07-08"&nasalswabresults$openhdsindividualId=="QUFCS1006011"] <- "2021-07-06"
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-07-09"&nasalswabresults$openhdsindividualId=="QUFMU1019003"] <- "2021-07-08"
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2021-07-09"&nasalswabresults$openhdsindividualId=="QUFPC1007002"] <- "2021-07-08"
+nasalswabresults$datacolheita[nasalswabresults$datacolheita=="2020-12-17"&nasalswabresults$openhdsindividualId=="QUIMU1005001"] <- "2020-12-16"
+nasalswabresults$openhdsindividualId[nasalswabresults$openhdsindividualId=="QUGM11005005"] <- "QUGQM1005005" 
+nasalswabresults$openhdsindividualId[nasalswabresults$openhdsindividualId=="QUFQM1037001"] <- "QUFQM1031001" 
+nasalswabresults$openhdsindividualId[nasalswabresults$openhdsindividualId=="QUFQM1072001"] <- "QULQM1072001" 
+nasalswabresults <- subset(nasalswabresults, nasalswabresults$openhdsindividualId!="QUFQM2004014"|nasalswabresults$datacolheita!="2022-02-18")
+ 
 
-# create common variable  
-F5$individualId_date <- paste(F5$`openhds-individualId`,"_",F5$datacolheita)
-nasalswabresults$individualId_date <- paste(nasalswabresults$`Member ID`,"_",nasalswabresults$datacolheita)
+# second database (UGD)
+nasalswabresultsugd <- read_excel("database/nasalswabslabUGD_oct2022/221001_Base de dados Africover_Nasal swabs_UGD.xlsx", 
+                                  sheet = "Base de dados Africover 26 8 20", 
+                                  col_types = c("text", "text", "text", "text", "text", "text", "date", "text", 
+                                                "numeric", "text", "text", "numeric", "date", "text", "numeric", "text", 
+                                                "text", "text", "text", "text", "text", "text", "text", "text", "text", "text", 
+                                                "numeric", "text", "text", "text", "text", "text", "text", "text", "text", 
+                                                "text", "numeric", "text", "text", "text", "text", "text", "text", "text", 
+                                                "text", "text", "numeric", "text", "text", "text", "numeric", "text", 
+                                                "text", "numeric", "text", "text", "date", "text", "text", "text", "text", 
+                                                "text", "text", "text", "text", "text", "text", "text", "text", "text", "text", 
+                                                "text", "text", "text", "text", "text", "text", "text", "text", "text", "text", 
+                                                "text", "text", "text", "text", "text", "text", "text", "text", "text", "text", 
+                                                "date", "text", "text", "text", "text", "text", "text", "text", "text", "text", 
+                                                "text", "text", "text", "text"))
+nasalswabresultsugd$resdpcm <- tolower(nasalswabresultsugd$resdpcm)
+# if date of collection is missing, replace with reporting date
+nasalswabresultsugd$datacolheita <- as.Date(nasalswabresultsugd$ssdffcolda)
+nasalswabresultsugd$datacolheita[is.na(nasalswabresultsugd$ssdffcolda)] <- as.Date(nasalswabresultsugd$datent[is.na(nasalswabresultsugd$ssdffcolda)])
+nasalswabresultsugd$missingdate[is.na(nasalswabresultsugd$ssdffcolda)] <- "missing"
+# remove duplicate rows
+dups = which(duplicated(nasalswabresultsugd%>%select('codusepi', 'datacolheita', 'resdpcm')))
+nasalswabresultsugd <- nasalswabresultsugd %>% filter(!row.names(nasalswabresultsugd) %in% dups)
+# mistakes found by comparing with F5 and with the UGD database
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2021-07-27"&nasalswabresultsugd$codusepi=="QU5MU1019004"] <- "2021-07-22"
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2021-02-08"&nasalswabresultsugd$codusepi=="QU5PC1059002"] <- "2021-08-02"
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2021-07-19"&nasalswabresultsugd$codusepi=="QU5RT1102005"] <- "2021-06-25"
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2021-07-08"&nasalswabresultsugd$codusepi=="QUFQM2097001"] <- "2021-07-13"
+nasalswabresultsugd <- nasalswabresultsugd %>% filter(codusepi!="QUMPC1010004"|datacolheita!="2021-12-27"|resdpcm!="negativo")
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2021-12-07"&nasalswabresultsugd$codusepi=="QU3QM2058001"] <- "2021-07-12"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUSPC1027005"] <- "QU5PC1027005"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUSNM4055002"] <- "QU5NM4055002"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUSPC1027005"] <- "QU5PC1027005"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUSNM4055006"] <- "QU5NM4055006"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUSPC1016006"] <- "QU5PC1016006"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUSPC1027007"] <- "QU5PC1027007"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUSPC1059005"] <- "QU5PC1059005"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUOMU1045007"] <- "QU0MU1045007"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUONM4008001"] <- "QU0NM4008001"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUOQM1004005"] <- "QU0QM1004005"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="Sem ficha de estudo"] <- "QU7PC1029002" # the only one with F5 record but no result on that date
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QU0TR101006"] <- "QU0TR1010006" # the only one with F5 record but no result on that date
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2022-02-02"&nasalswabresultsugd$codusepi=="QU0QM1004005"] <- "2022-02-01"
+nasalswabresultsugd <- nasalswabresultsugd %>% filter(codusepi!="QU3M2050005") # entered as well with code QU3M2050005
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QU51035002"] <- "QU5MU1035002" # the only one with F5 record
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUMPC10050100"] <- "QUMPC1005010" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUMN4014006"] <- "QUMNM4014006" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUCC300222004"] <- "QUCCS3002004" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUECS004014"] <- "QUECS2004014" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUEQM100402"] <- "QUEQM1004002" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUFCPC1014002"] <- "QUFPC1014002" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUFM1020002"] <- "QUFMU1020002" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUFMQ20171001"] <- "QUFNM1017001" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUFPC101409"] <- "QUFPC1014009" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUFQM10122015"] <- "QUFQM1012015" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUFQM103001"] <- "QUFQM1030010" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUFQM103004"] <- "QUFQM1030004" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUGAHM2002001"] <- "QUGAM2002001" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUGAM200205"] <- "QUGAM2002005" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUGQMD10004"] <- "QUGQM2010004" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QULCS300300"] <- "QULCS3006007" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QULG1028002"] <- "QULGJ1028002"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QULNM404002"] <- "QULNM4014002" 
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2021-02-03"&nasalswabresultsugd$codusepi=="QU5MU1069002"] <- "2021-03-02"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QU5MV1019002"] <- "QU5MU1019002"
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2021-11-19"&nasalswabresultsugd$codusepi=="QU5MU1019002"] <- "2021-10-19"
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2021-08-24"&nasalswabresultsugd$codusepi=="QU5PC1027005"] <- "2021-08-23"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QU5QM1033005"&nasalswabresultsugd$datacolheita=="2022-01-25"] <- "QU5QM1033006"
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2022-08-03"&nasalswabresultsugd$codusepi=="QU7CS3024002"] <- "2022-03-08"
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2022-02-02"&nasalswabresultsugd$codusepi=="QU0QM1004005"] <- "2022-02-01"
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2021-12-23"&nasalswabresultsugd$codusepi=="QU3QM2054001"] <- "2021-07-01" # no F2 visit on that day, and discrepant between two result databases
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2021-02-03"&nasalswabresultsugd$codusepi=="QU5MU1069002"] <- "2021-03-02" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QU5MV1019002"] <- "QU5MV1019002"
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2021-05-10"&nasalswabresultsugd$codusepi=="QUEAM2006004"] <- "2021-10-01" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUENH2012009"] <- "QUENM2012009"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUEQM1007001"] <- "QUFQM1007001"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUEQM1045002"] <- "QUFQM1045002"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUEQM2077001"] <- "QUFQM2077001"
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2021-05-28"&nasalswabresultsugd$codusepi=="QUFCS2006001"] <- "2021-05-26" 
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2021-05-01"&nasalswabresultsugd$codusepi=="QUFNM1005004"] <- "2021-01-05" 
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2021-05-01"&nasalswabresultsugd$codusepi=="QUFNM1005006"] <- "2021-01-05" 
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2022-01-01"&nasalswabresultsugd$codusepi=="QUFNM1010004"] <- "2021-12-28" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUFNM4023001"] <- "QU7NM4023001"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUFNM4023006"] <- "QU7NM4023006"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUFOM1030005"] <- "QUFQM1030005"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUFOM2085004"] <- "QUFOM2085004"
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2021-04-08"&nasalswabresultsugd$codusepi=="QUFQM1006003"] <- "2021-08-04" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUFQM1037001"] <- "QUFQM1031001"
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2022-03-23"&nasalswabresultsugd$codusepi=="QUFQM2060006"] <- "2022-03-22" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUGNM1010007"] <- "QUFNM1010007"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUGNM4007015"] <- "QU6NM4007015"
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2021-07-27"&nasalswabresultsugd$codusepi=="QUGQM1005006"] <- "2021-08-06" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUHMN1009002"] <- "QUHMU1009002"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUHQMI001003"] <- "QUHQM1001003"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUIMU1011004"] <- "QUJMU1011004"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUJBM1006001"] <- "QUJNM1006001"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QULNH3020003"] <- "QULNM3020003"
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2022-02-24"&nasalswabresultsugd$codusepi=="QULNM3003002"] <- "2022-02-09" 
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2021-11-01"&nasalswabresultsugd$codusepi=="QULNM4010001"] <- "2022-01-11" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QULQM1672001"] <- "QULQM1072001"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QULTR1041004"] <- "QULRT1041004"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUMQM1037004"] <- "QUHQM1037004"
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2021-12-04"&nasalswabresultsugd$codusepi=="QUNNM4006005"] <- "2021-04-12" 
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2021-06-08"&nasalswabresultsugd$codusepi=="QUNRT1002001"] <- "2021-06-21" 
+nasalswabresultsugd$datacolheita[nasalswabresultsugd$datacolheita=="2021-03-18"&nasalswabresultsugd$codusepi=="QU7RT1013006"] <- "2021-03-19" 
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QU0TR1010006"] <- "QU0RT1010006"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUEPC1014006"] <- "QUFPC1014006"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QUFOM2085004"] <- "QUFQM2085004"
+nasalswabresultsugd$codusepi[nasalswabresultsugd$codusepi=="QU7QJ1052006"] <- "QU7GJ1052006" 
+
+# merge both databases
+# create a common variable in both databases
+nasalswabresults$dateID <- paste(nasalswabresults$datacolheita, nasalswabresults$openhdsindividualId)
+nasalswabresultsugd$dateID <- paste(nasalswabresultsugd$datacolheita, nasalswabresultsugd$codusepi)
+
+# keep only useful variables
+nasalswabresultssimpl <- nasalswabresults %>%
+  select(dateID, Resultado, datacolheita, openhdsindividualId)
+nasalswabresultsugdsimpl <- nasalswabresultsugd %>%
+  select(dateID, resdpcm, valorct, datacolheita, missingdate, codusepi)
 
 # merge
-possiblecases <- merge(F5, nasalswabresults, by = "individualId_date", all=T) 
-#export to check where merging went wrong
-write.csv(possiblecases, "possiblecases.csv")
-possiblecases_simplified <- possiblecases %>%
-  select(individualId_date, ID, datacolheita.x, Resultado, datacolheita.y)
-# remove observations without data
-possiblecases <- subset(possiblecases, possiblecases$individualId_date!="NA _ 2021-02-24")
+nasalswabresultsmerged <- merge(nasalswabresultssimpl, nasalswabresultsugdsimpl, by = "dateID", all = T)
+
+# remove when NA NA
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!= "NA NA")
+
+# remove values that appear in both databases but with slightly different dates (checking the actual date in F5)
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-07-11 QUEQM1004002")
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-08-11 QUEQM1004002")
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-04-14 QUGAM2002005")
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-07-12 QUFQM2064001") # 2nd test for same disease episode that was and remained negative
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-07-15 QUGMU1003007") # 1st test for same disease episode, for which a full entry two weeks later
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-08-06 QUMCS3002007") # no study participant/baseline record
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-04-23 QUEAM2009008") # 2nd test result for same disease episode
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-05-10 QUMRT1002005") # date turned around, another entry on 2021-10-05 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-03-05 QUMRT1001007") # another entry on 2021-03-04 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-08-19 QULRT1041004") # another entry on 2021-08-18 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-03-09 QULPC1005003") # another entry on 2021-03-08 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-03-13 QULMU1067002") # another entry on 2021-03-18 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2022-01-14 QULMU1015004") # another entry on 2021-01-13 in UGD db
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-03-09 QULGJ1028002") # another entry on 2021-03-08 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-07-28 QULGJ1017003") # another entry on 2021-07-29 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-07-28 QULGJ1017002") # another entry on 2021-07-29 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-05-11 QULCS3011002") # another entry on 2021-05-10 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2022-02-01 QULCS3010001") # another entry on 2022-02-02 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-08-18 QULCS3006005") # another entry on 20210817 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-08-18 QULCS2048001") # another entry on 20210817 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-04-08 QUGQM2010004") # another entry on 20210406 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-08-18 QUGAM2002013") # another entry on 20210817 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-08-18 QUGAM2002009") # another entry on 20210817 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-08-18 QUGAM2002004") # another entry on 20210817 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-08-18 QUGAM2002002") # another entry on 20210817 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-04-04 QUFQM2047005") # another entry on 20210406 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-08-27 QUFQM1033001") # another entry on 20210826 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-04-08 QUFQM1012001") # another entry on 20210406 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-03-15 QUFNM1008002") # another entry on 20210313in F2
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-03-15 QU7PC1029002") # another entry on 20210316 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-01-05 QUFNM1005006") # another entry corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-01-05 QUFNM1005004") # another entry corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2022-02-23 QUFMU1003005") # another entry on 20220222 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2022-02-23 QUFMU1003004") # another entry on 20220222 corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-05-27 QUFCS2006001") # another entry corresponding to F5 entry
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-08-27 QUFCS2005007") # another entry corresponding to F5 entry
+# remove observations of persons not recorded at baseline as participant
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-02-24 QU3PC1019007") 
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-01-07 QUFQM2079001") 
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-01-14 QU7MU1013006") 
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-01-18 QUCCS3009012") 
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(dateID!="2021-03-13 QUFNM1008002") 
+
+# keep a single result, ID & collection date
+nasalswabresultsmerged$ID <- nasalswabresultsmerged$codusepi
+nasalswabresultsmerged$ID[is.na(nasalswabresultsmerged$codusepi)] <- nasalswabresultsmerged$openhdsindividualId[is.na(nasalswabresultsmerged$codusepi)]
+nasalswabresultsmerged$testresult[!is.na(nasalswabresultsmerged$resdpcm)] <- nasalswabresultsmerged$resdpcm[!is.na(nasalswabresultsmerged$resdpcm)]
+nasalswabresultsmerged$testresult[is.na(nasalswabresultsmerged$resdpcm)] <- nasalswabresultsmerged$Resultado[is.na(nasalswabresultsmerged$resdpcm)]
+nasalswabresultsmerged$datacolheita <- as.Date(nasalswabresultsmerged$datacolheita.y)
+nasalswabresultsmerged$datacolheita[is.na(nasalswabresultsmerged$datacolheita)] <- as.Date(nasalswabresultsmerged$datacolheita.x[is.na(nasalswabresultsmerged$datacolheita)])
+nasalswabresultsmerged <- nasalswabresultsmerged %>% select(dateID, ID, datacolheita, testresult, valorct)
+
+# after merging, in case of discordant result, NA, or 'si' result, results on paper forms looked up
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2022-02-16 QUFQM1037001"] <- "negativo"
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2021-07-13 QUKQM1012005"] <- "positivo"
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2021-12-27 QUMGJ1006001"] <- "negativo"
+nasalswabresultsmerged$valorct[nasalswabresultsmerged$dateID=="2021-12-27 QUMGJ1006001"] <- NA
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2021-07-25 QUMNM4002005"] <- "positivo"
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2021-12-29 QUMNM4012007"] <- "positivo"
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2021-07-13 QUKQM1012005"] <- "positivo"
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2021-12-27 QUMGJ1006001"] <- "negativo"
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2021-07-25 QUMNM4002005"] <- "positivo"
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2021-12-29 QUMNM4012007"] <- "positivo"
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2021-07-27 QULPC1073003"] <- NA # not found
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2021-04-12 QULRT1041002"] <- NA
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2021-01-05 QUMMU1006002"] <- NA
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2021-12-21 QUMNM4014007"] <- NA
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2022-02-17 QUNRT1004003"] <- NA
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2022-02-17 QUNRT1004006"] <- NA
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2021-01-23 QU1NM4004002"] <- NA
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2021-07-19 QU3QM1020001"] <- NA
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2021-01-06 QU4RT1008001"] <- NA
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2021-05-20 QU5RT1022007"] <- NA
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2022-02-17 QU7CS3036001"] <- NA
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2021-05-28 QU7PC1033004"] <- NA
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2021-07-13 QUCCS3002004"] <- NA
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2022-02-17 QUFQM1005005"] <- NA
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2022-01-26 QUFQM2085002"] <- NA
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$dateID=="2022-02-01 QULCS3010001"] <- "negativo"
+
+# remove duplicates
+# check duplicated rows
+dups = which(duplicated(nasalswabresultsmerged%>%select(dateID, testresult)))
+length(dups) # 4 duplicate rows still
+# Remove duplicated rows
+nasalswabresultsmerged <- nasalswabresultsmerged %>% filter(!row.names(nasalswabresultsmerged) %in% dups) # n=9959
+
+table(nasalswabresultsmerged$testresult, useNA = "always")
+
+# rename results to english
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$testresult=="negativo"] <- "negative"
+nasalswabresultsmerged$testresult[nasalswabresultsmerged$testresult=="positivo"] <- "positive"
+
+# tests with CT value still missing
+table(nasalswabresultsmerged$valorct[nasalswabresultsmerged$testresult=="positive"], useNA = "always")
+missingct <- nasalswabresultsmerged$dateID[nasalswabresultsmerged$testresult=="positive"&is.na(nasalswabresultsmerged$valorct)]
+missingct
+write.csv(missingct, file = "missingct.csv")
+
+# add a variable to say how many episodes reported by that participant
+nasalswabresultsbyparticipant <- nasalswabresultsmerged %>% group_by(ID) %>% summarise(n_episodes=n())
+nasalswabresultsmerged <- merge(nasalswabresultsmerged, nasalswabresultsbyparticipant, by = "ID", all.x = T)
+table(nasalswabresultsmerged$n_episodes) # checked for multiple results per disease episode (removing 2nd tests) on 20230426
+
+
+## 3.3 merge lab results and ODK F5
+possiblecases <- merge(F5, nasalswabresultsmerged, by = "dateID", all=T) 
+# PCR results but no F5 entry
+resultwithoutF5 <- possiblecases$dateID[is.na(possiblecases$start)]
+resultwithoutF5 # all checked, STILL to create F5 entries based on symptoms & dates in UGD database
+write.csv(resultwithoutF5, file = "resultwithoutF5.csv")
+
+# F5 entry but no PCR results
+F5withoutresult <- possiblecases %>% filter(is.na(possiblecases$testresult)&is.na(possiblecases$datacolheita.y)&sample_was_taken!="Não") %>% select(dateID, datacolheita.x, datacolheita.y, dstart, sample_was_taken)
+F5withoutresult # 14 remaining without result after double check in paper forms
+# one result found from double check
+possiblecases$testresult[possiblecases$dateID=="2021-03-07 QU7NM4005002"] <- "negative"
+
+# look for those dates which might have been wrongly entered 
+F5withoutresult %>% filter(dstart!=datacolheita.x)
+write.csv(F5withoutresult, file = "F5withoutresult.csv")
 
 # link possible cases and participant data
-possiblecases_participants <- merge(possiblecases, participants, by = "openhdsindividualId")
+possiblecases_bl <- merge(possiblecases, participants, by.x = "individualid", by.y = "openhdsindividualId", all.x = T)
+
+# still a lot of age and sex missing, add those from the demographic db
+possiblecases_bl <- merge(possiblecases_bl, demographics, by.x = "individualid", by.y = "openhdsindividualId", all.x = T)
+possiblecases_bl$age[is.na(possiblecases_bl$age)] <- round(as.numeric(as.Date("2021-06-15") - as.Date(possiblecases_bl$dob.y[is.na(possiblecases_bl$age)]))/365.25,0)
+possiblecases_bl$GENDER <- possiblecases_bl$GENDER.x
+possiblecases_bl$GENDER[is.na(possiblecases_bl$GENDER.x)] <- possiblecases_bl$GENDER.y[is.na(possiblecases_bl$GENDER.x)]
+
+# add age groups
+possiblecases_bl$agegr[possiblecases_bl$age<18] <- "0-17"
+possiblecases_bl$agegr[possiblecases_bl$age>17&possiblecases_bl$age<50] <- "18-49"
+possiblecases_bl$agegr[possiblecases_bl$age>49] <- "50+"
+
 # export database
-write.csv(possiblecases_participants, file = "possiblecases_participants.csv")
+write.csv(possiblecases_bl, file = "possiblecases_bl.csv")
 
 ## 3.4 F2 active surveillance follow-up
 # household part
-F2 <- xl.read.file("database/20221123/Africover F2 Follow Up_full_DB.xlsx", password = "africover_1")
+#  F2 <- read_excel("database/20220323/F2.xlsx")
+FU <- xl.read.file("database/20221123/Africover F2 Follow Up_full_DB.xlsx", password = "africover_1")
 
-# check duplicated rows
-dups = which(duplicated(F2%>%select(start, openhdsindividualId, visit_confirmationcontact_type, visit_confirmationcontact_date, KEY)))
-length(dups)
-# Remove duplicated rows
-F2 <- F2 %>% filter(!row.names(F2) %in% dups) # n=9959
-# number of visits
-nFUvisits <- F2 %>%
-  filter(visit_confirmationvisit_done != 0) %>%
-  group_by(visit_confirmationcontact_date, openhdsvisitId)
-nFUvisits
+# keep only useful variables
+FU <- FU %>% select(start, locationId, indivIdualId, visit_done, contact_type, contact_date, contact, respiratory_symptoms, individualId_rs, symptoms_date, health_care, health_care_center, specify_health_center, malaria_test, malaria_diagnose)
 
-# check how often symptomatic cases were reported in the HH
-table(F2$exposure_symptomsrespiratory_sy) # 407 HH visits with (at least one) episode reported
-# format date of symptom onset
-F2$datacolheita <- as.Date(F2$history_symptoms_date_colected_)
-F2$datacolheita[is.na(F2$datacolheita)] <- as.Date(F2$history_symptomsdate_colected[is.na(F2$datacolheita)])
-table(F2$datacolheita, useNA = "always")
-F2$datesymptomonset <- as.Date(F2$history_symptoms_symptoms_date_)
-table(F2$datesymptomonset, useNA = "always")
-# individual HH member part (episodes of illness)
-F2episodes <- read_excel("database/20220323/F2_symptoms.xlsx")
-# check duplicated rows
-dups = which(duplicated(F2episodes%>%select(history_symptoms_individualID_r, KEY)))
-length(dups)
-# Remove duplicated rows
-F2episodes <- F2episodes %>% filter(!row.names(F2episodes) %in% dups) # only n=106 remaining, something must have gone wrong during data collection CHECK
+# contactdate to date format
+FU$contact_date <- as.Date(FU$contact_date)
 
-# merge HH visit data with episodes
-F2_mergedepisodes <- merge(F2, F2episodes, by = "KEY", all = T)
+# remove planned visits that were not done
+FU <- FU %>% filter(FU$visit_done=="Sim")
 
-# link active surveillance visits and possible cases
-# create unique variable for the HH during that visit
-F2$HH_datacolheita <- NA
-F2$HH_datacolheita[!is.na(F2$openhdslocationId)&!is.na(F2$datacolheita)] <- paste(F2$openhdslocationId[!is.na(F2$openhdslocationId)&!is.na(F2$datacolheita)],"_",F2$datacolheita[!is.na(F2$openhdslocationId)&!is.na(F2$datacolheita)])
-# create unique var for the HH where a sample is collected
-possiblecases_participants$HH_datacolheita <- NA
-possiblecases_participants$HH_datacolheita[!is.na(possiblecases_participants$openhds.locationId)&!is.na(possiblecases_participants$datacolheita.x)] <- paste(possiblecases_participants$openhds.locationId[!is.na(possiblecases_participants$openhds.locationId)&!is.na(possiblecases_participants$datacolheita.x)],"_",possiblecases_participants$datacolheita.x[!is.na(possiblecases_participants$openhds.locationId)&!is.na(possiblecases_participants$datacolheita.x)] )
-# merge both, removing possible cases not directly linked to a visit (CHECK)
-# activesurveillance <- merge(F2, possiblecases_participants, by = "HH_datacolheita", all.x = T) SOMETHING WRONG HERE. R CRASHES
+# remove 2nd visits during the same week (for instance, a phone visit followed by a house visit if a possible case was reported over the phone) 
+# make variable that says how many vars missing
+FU$missing_count <- rowSums(is.na(FU))
+# create a variable with the week
+FU <- FU %>%  mutate(week = as.Date(cut(contact_date, breaks = "1 week")))
+FU$weekHHID <- paste(FU$locationId,FU$week)
+# check rows of visits to HH in the same week, and keep the one with least missing values
+# remove of duplicates that with most missing values
+FU <- FU %>%
+  group_by(weekHHID) %>%
+  arrange(missing_count) %>%
+  distinct(weekHHID, .keep_all = TRUE)
 
+# save the FU database
+write.csv(FU, file = "FU.csv")
+
+# # format date of symptom onset
+# FU$datacolheita <- as.Date(FU$history_symptoms_date_colected_)
+# FU$datacolheita[is.na(FU$datacolheita)] <- as.Date(FU$history_symptomsdate_colected[is.na(FU$datacolheita)])
+# table(FU$datacolheita, useNA = "always")
+# FU$datesymptomonset <- as.Date(FU$history_symptoms_symptoms_date_)
+# table(FU$datesymptomonset, useNA = "always")
+# 
+# # individual HH member part (episodes of illness)
+# FUepisodes <- read_excel("database/20220323/F2_symptoms.xlsx")
+# # check duplicated rows
+# dups = which(duplicated(FUepisodes%>%select(history_symptoms_individualID_r, KEY)))
+# length(dups)
+# # Remove duplicated rows
+# FUepisodes <- FUepisodes %>% filter(!row.names(FUepisodes) %in% dups) # only n=106 remaining, something must have gone wrong during data collection CHECK
+# 
+# # merge HH visit data with episodes
+# FU_mergedepisodes <- merge(FU, FUepisodes, by = "KEY", all = T)
+# 
+# # link active surveillance visits and possible cases
+# # create unique variable for the HH during that visit
+# FU$HH_datacolheita <- NA
+# FU$HH_datacolheita[!is.na(FU$openhdslocationId)&!is.na(FU$datacolheita)] <- paste(FU$openhdslocationId[!is.na(FU$openhdslocationId)&!is.na(FU$datacolheita)],"_",FU$datacolheita[!is.na(FU$openhdslocationId)&!is.na(FU$datacolheita)])
+# # create unique var for the HH where a sample is collected
+# possiblecases_participants$HH_datacolheita <- NA
+# possiblecases_participants$HH_datacolheita[!is.na(possiblecases_participants$openhds.locationId)&!is.na(possiblecases_participants$datacolheita.x)] <- paste(possiblecases_participants$openhds.locationId[!is.na(possiblecases_participants$openhds.locationId)&!is.na(possiblecases_participants$datacolheita.x)],"_",possiblecases_participants$datacolheita.x[!is.na(possiblecases_participants$openhds.locationId)&!is.na(possiblecases_participants$datacolheita.x)] )
+# # merge both, removing possible cases not directly linked to a visit (CHECK)
+# # activesurveillance <- merge(FU, possiblecases_participants, by = "HH_datacolheita", all.x = T) SOMETHING WRONG HERE. R CRASHES
+
+# summary with the number of visits per household
+nvisitsperHH <- FU %>% group_by(locationId) %>% summarize(n=n())
+
+# import geographical coordinates of households, in order to link to household visits
+geopoints <- read_excel("database/AfriCoVER_geopoint_Vicky_20230427.xlsx", 
+                        sheet = "Sheet1", col_types = c("text", 
+                                                        "text", "text", "numeric", "numeric", 
+                                                        "numeric"))
+colnames(geopoints) <- c("locationId","indivIdualId","bairro","quarteiro","latitude","longitude")
+
+# combine the number of household visits and the geom points to create a map of visits in the area
+visit_geompoints <- merge(nvisitsperHH, geopoints, by = "locationId") # keep only those which fully merged
+
+# keep one coordinate per HH
+visit_geompoints <- visit_geompoints %>% group_by(locationId, latitude,longitude) %>% summarise(n=min(n))
+
+write.csv(visit_geompoints, file = "visit_geompoints.csv")
 
 #### 4. SEROSURVEILLANCE ####
 # we will start from the samples, as for some samples, an ODK entry is missing, or ODK entries exit for which no sample can be found
@@ -668,35 +998,3 @@ table(DBSparticipants$n)
 # age distribution
 hist(DBSparticipants$age, breaks = 20, main = NULL, xlab = "Age (years)")
 prop.table(table(DBSparticipants$agegr))
-
-# possible cases
-possiblecases <- read_excel("database/Africover lab DB 05072021/Relatorio de Resultados das Amostras Nasais Agregados 01072021.xlsx", 
-                            sheet = "Detalhes dos Resultados ")
-possiblecases$openhdsindividualId <- possiblecases$`Member ID`
-possiblecases_demographics <- merge(possiblecases, baseline_demographics, by = "openhdsindividualId", all.x = T)
-possiblecases_demographics$age <- round(as.numeric((as.Date(possiblecases_demographics$`Data da Colheita`) - as.Date(possiblecases_demographics$`individualInfo:dateOfBirth`)))/365.25,0)
-possiblecases_demographics$agegr[possiblecases_demographics$age<18] <- "<18"
-possiblecases_demographics$agegr[possiblecases_demographics$age>17&possiblecases_demographics$age<50] <- "18-49"
-possiblecases_demographics$agegr[possiblecases_demographics$age>49] <- ">/=50"
-prop.table(table(possiblecases_demographics$agegr))
-prop.table(table(possiblecases_demographics$agegr[possiblecases_demographics$Resultado=="Positivo"]))
-table(possiblecases_demographics$Resultado)
-
-# histogram possible cases
-possiblecases_demographics$month <- month(as.Date(possiblecases_demographics$`Data da Colheita`), label = T)
-possiblecases_demographics$Resultado[possiblecases_demographics$Resultado=="SI"] <- "Negativo"
-monthlycount <- possiblecases_demographics %>%
-  group_by(month, Resultado) %>%
-  summarise(n=n())
-monthlycount
-possiblecaseshistogram <- ggplot(monthlycount, aes(x=month, y=n, fill=factor(Resultado))) +
-  geom_col()+
-  labs(title="", x = "", y="Number of possible cases") +
-  theme_bw() +
-  theme(panel.background=element_rect(colour = NA, fill = "white"),
-        legend.title = element_blank(),
-        axis.text = element_text(size=14),
-        axis.title=element_text(size=15),
-        legend.text= element_text(size=10),
-        title= element_text(size=15))
-possiblecaseshistogram
