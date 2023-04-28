@@ -134,7 +134,7 @@ mean(nHH$n) # mean HH size = 4.03
 
 # mark which participant had symptoms, and which tested covid +
 possiblecases$confirmed <- 0
-possiblecases$confirmed[possiblecases$testresult=="positivo"] <- 1
+possiblecases$confirmed[possiblecases$testresult=="positive"] <- 1
 
 participants_with_episode <- possiblecases %>% filter(!is.na(individualid)) %>% group_by(individualid) %>% summarise(n_episodes=n(), n_confirmed=sum(confirmed))
 participantstest <- merge(participants, participants_with_episode, by.x = "openhdsindividualId", by.y = "individualid", all = T)
@@ -304,7 +304,7 @@ possiblecases_bl %>% filter(!is.na(delay)) %>% summarise(median=median(delay),q2
 possiblecases_bl %>% filter(!is.na(delay)) %>% group_by(agegr) %>% summarise(median=median(delay),q25=quantile(delay,0.25),q75=quantile(delay,0.75))
 
 # select only confirmed cases                            
-confirmed <- possiblecases_bl %>% filter(testresult=="positivo")
+confirmed <- possiblecases_bl %>% filter(testresult=="positive")
 
 # CT values
 confirmed$ct <- as.numeric(possiblecases_bl$valorct)
@@ -335,7 +335,7 @@ ggsave(plot = scatterCTage,"scatterCTage.jpg", width = 5, height = 10, dpi = 300
 
 #### 5. FACTORS ASSOCIATED WITH POSITIVE RESULT ####
 # subset database to keep only those with results
-testedpossiblecases <- possiblecases_bl %>% filter(testresult=="positivo" | testresult=="negativo")
+testedpossiblecases <- possiblecases_bl %>% filter(testresult=="positive" | testresult=="negative")
 
 # frequencies confirmed
 table(testedpossiblecases$testresult, useNA = "always")
@@ -399,8 +399,8 @@ testedpossiblecases <- testedpossiblecases %>%
   mutate(across(                                      
     .cols = all_of(c(explanatory_vars, "testresult")),  ## for each column listed and "outcome"
     .fns = ~case_when(                              
-      . %in% c("Sim", "yes", "positivo")   ~ 1,           ## recode male, yes and death to 1
-      . %in% c("Não", "Não sabe", "no",  "negativo") ~ 0,           ## female, no and recover to 0
+      . %in% c("Sim", "yes", "positive")   ~ 1,           ## recode male, yes and death to 1
+      . %in% c("Não", "Não sabe", "no",  "negative") ~ 0,           ## female, no and recover to 0
       TRUE                            ~ NA_real_)    ## otherwise set to missing
   )
   )
@@ -522,8 +522,8 @@ table(possiblecases_bl$hiv)
 prop.table(table(possiblecases_bl$hiv))
 
 # among confirmed cases
-table(possiblecases_bl$hiv[possiblecases_bl$testresult=="positivo"])
-prop.table(table(possiblecases_bl$hiv[possiblecases_bl$testresult=="positivo"]))
+table(possiblecases_bl$hiv[possiblecases_bl$testresult=="positive"])
+prop.table(table(possiblecases_bl$hiv[possiblecases_bl$testresult=="positive"]))
 
 # adjusting for age
 testedpossiblecases$hivbin[testedpossiblecases$hiv=="Crianca exposta"] <- 1
@@ -563,7 +563,7 @@ prop.table(table(participants$SesScoreQnt))
 
 # among confirmed cases
 table(possiblecases_bl$SesScoreQnt)
-prop.table(table(possiblecases_bl$SesScoreQnt[possiblecases_bl$testresult=="positivo"]))
+prop.table(table(possiblecases_bl$SesScoreQnt[possiblecases_bl$testresult=="positive"]))
 
 # adjusting for age
 
@@ -578,7 +578,7 @@ prop.table(table(participants$ednivel_educacao))
 
 # among confirmed cases
 table(possiblecases_bl$ednivel_educacao)
-prop.table(table(possiblecases_bl$ednivel_educacao[possiblecases_bl$testresult=="positivo"]))
+prop.table(table(possiblecases_bl$ednivel_educacao[possiblecases_bl$testresult=="positive"]))
 
 
 #### 6. INCIDENCE OF (symptomatic) COVID-19 ####
