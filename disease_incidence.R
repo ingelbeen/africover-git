@@ -38,15 +38,14 @@ max(geopoints$longitude[!is.na(geopoints$longitude)])
 maputo_bbox <- c(left = 32.59, bottom = -25.95, right = 32.63, top = -25.923)
 # Get the map using the Stamen source
 # maputo <- get_openstreetmap(bbox = maputo_bbox) # doesn't work for now
-maputo <- get_stamenmap(bbox = maputo_bbox, maptype = "toner-lite", zoom = 16) 
+# maputo <- get_stamenmap(bbox = maputo_bbox, maptype = "toner-lite", zoom = 16) 
 maputo <- get_stamenmap(bbox = maputo_bbox, maptype = "terrain", zoom = 16)
-ggmap(maputo)
 # api_key <- "HZlfIpAihcDRbZ95DIvK9g"
 # # Get the map using Here Maps
 # maputo <- get_heremap(app_id = NULL, app_code = NULL, api_key = api_key, 
 #                       zoom = 14, bbox = maputo_bbox, maptype = "normal.day") # doesn't find the function for some reason
 
-# plot the map using ggmap and add the point layer
+# plot the map of HH visits using ggmap and add the point layer
 dottedmapvisits <- ggmap(maputo) + 
   geom_point(data = visit_geompoints, aes(x = longitude, y = latitude, color = n),
              alpha = 0.3) +
@@ -60,18 +59,19 @@ dottedmapvisits <- ggmap(maputo) +
 dottedmapvisits
 ggsave("dottedmapvisits.jpg", dottedmapvisits, dpi = 300, width = 8, height = 6)
 
-
-dottedmap <- ggmap(south_west_cameroon) +
-  geom_point(data = casecountbylocationandbystart, aes(x = Longitude, y = Latitude, color = dstartoutbreak, size = n)) +
-  geom_text(data = districtlocation, aes(x = meanlon, y = meanlat,  
-                                         label = healthdistrict_simpl), size = 4, nudge_x = 0.03, nudge_y = 0.03) +
-  labs(size = "n", color = "dstartoutbreak") +
-  scale_color_date(date_labels = "%m/%d/%Y", name = "dstartoutbreak", low = "red", high = "blue") 
-dottedmap
-packageVersion("ggmap")
-
-
-
+# plot the map of HH visits using ggmap and add the point layer
+dottedmapcases <- ggmap(maputo) + 
+  geom_point(data = visit_geompoints, aes(x = longitude, y = latitude, color = n),
+             alpha = 0.3) +
+  scale_color_gradient(low = "#ADD8E6", high = "#000080") +
+  guides(size = FALSE, shape = FALSE) +
+  labs(color = "Number of \nhousehold visits") +
+  theme(legend.title = element_text(size = 9)) +
+  scale_x_continuous(labels = scales::number_format(accuracy = 0.01), expand = c(0, 0)) +
+  scale_y_continuous(labels = scales::number_format(accuracy = 0.01), expand = c(0, 0)) +
+  theme(plot.margin = unit(c(0,0,0,0), "cm")) 
+dottedmapcases
+ggsave("dottedmapcases.jpg", dottedmapcases, dpi = 300, width = 8, height = 6)
 
 # plot of weekly visits
 FU_weekly <- FU %>%
