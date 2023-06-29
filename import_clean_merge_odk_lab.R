@@ -6,7 +6,7 @@
 # date last update: 2022-12-01
 
 # install/load packages
-pacman::p_load(readxl,excel.link,dplyr,lubridate,ggplot2,usethis)
+pacman::p_load(readxl,excel.link,dplyr,lubridate,ggplot2,usethis, writexl)
 
 #### 1. DEMOGRAPHIC DATA ####
 # full cohort databases - not used as many mismatches
@@ -166,7 +166,7 @@ F1bwithoutF1a <- F1 %>%
 write.table(F1bwithoutF1a, "F1bwithoutF1a.txt")
 
 # merge with demographic data
-participants <- merge(demographics, F1, by.x = "openhdsindividualId", by.y = "individualid", all.y = T)
+participants <- merge(demographics, F1, by.x = "openhdsindividualId", by.y = "individualid", all = T)
 
 # remove lines without participant data (F1a but no F1b)
 participants <- participants %>% filter(!is.na(openhdsindividualId))
@@ -219,17 +219,27 @@ hist(F3_weightheightcombined$height)
 F3_weightheightcombined$BMI <- round(F3_weightheightcombined$weight/((F3_weightheightcombined$height/100)^2),1)
 hist(F3_weightheightcombined$BMI)
 
+
+
+
 # merge participant baseline data and weight and height
 participants <- merge(participants, F3_weightheightcombined, by.x = "openhdsindividualId", by.y = "individualid", all.x = T) # only 3684 out of 6807
-write.csv(participants, "participants.csv")
-participantssimpl <- participants %>% select(locationid, openhdsindividualId)
-write.csv(participantssimpl, "participantssimpl.csv")
-
 # identify those with weight and height that doesn't make sense
 list_weight_height_problems <- participants %>%
   filter((BMI<10|BMI>35) & age>4) %>%
   select(openhdsindividualId, GENDER, age, weight, height, BMI, MUAC)
 write.table(list_weight_height_problems, file = "list_weight_height_problems.txt")
+
+# add age groups
+participants$agegr[participants$age<18] <- "0-17"
+participants$agegr[participants$age>17&participants$age<50] <- "18-49"
+participants$agegr[participants$age>49] <- "50+"
+
+# save file
+write.csv(participants, "participants.csv")
+participantssimpl <- participants %>% select(locationid, openhdsindividualId)
+write.csv(participantssimpl, "participantssimpl.csv")
+
 
 # import updates of comorbidities (F7), such as new diagnoses of HIV, chronic conditions, etc., once we have a version with factor variables as strings
 F7 <- read_excel("database/20220609cleaned/AfriCoVER_F7_Comorbididades limpo.xls")
@@ -609,6 +619,10 @@ table(nasalswabresultsmerged$n_episodes) # checked for multiple results per dise
 
 ## 3.3 merge lab results and ODK F5
 possiblecases <- merge(F5, nasalswabresultsmerged, by = "dateID", all=T) 
+
+# add ID even if no match could be done
+possiblecases$individualid[is.na(possiblecases$individualid)] <- possiblecases$ID[is.na(possiblecases$individualid)]
+
 # PCR results but no F5 entry
 resultwithoutF5 <- possiblecases$dateID[is.na(possiblecases$start)]
 resultwithoutF5 # all checked, STILL to create F5 entries based on symptoms & dates in UGD database
@@ -624,24 +638,70 @@ possiblecases$testresult[possiblecases$dateID=="2021-03-07 QU7NM4005002"] <- "ne
 F5withoutresult %>% filter(dstart!=datacolheita.x)
 write.csv(F5withoutresult, file = "F5withoutresult.csv")
 
-# link possible cases and participant data
-possiblecases_bl <- merge(possiblecases, participants, by.x = "individualid", by.y = "openhdsindividualId", all.x = T)
+# remove observations of cases for which a test was done, but didn't belong to the HDSS cohort
+ids_to_remove <- c("BL0QM2012004", "BLBDA1017004", "QU0RT1005008", "QU1PC1003007", "QU3NM1011001", "QU3NM1012010", "QU7NM4022005", "QU7PC1019006", "QU8NM1031002", "QU8NM1031003", "QU8NM1047004", "QU8NM1066002", "QU8NM1066003", "QU8NM1066004", "QU8NM1066005", "QU8NM1067004", "QUBNM4003009", "QUCPC1005006", "QUFNM1004003", "QUFNM1010010", "QUFNM1010012", "QUFNM1026010", "QUFPC1001002", "QUFPC1003002", "QUFPC1026005", "QUFPC1035004", "QUJPC2011008", "QULAM2067003", "QULAM2067004", "QULNM2021011", "QULNM4009008", "QULNM4009009", "QULNM4011001", "QULPC1001007", "QULPC1025008", "QULPC1037003", "QULPC1040007", "QUMNM4013001", "QUMPC1010005", "QUMPC1018002", "QUTRT1030012", "QUXQM2014004")
+possiblecases <- possiblecases[!(possiblecases$individualid %in% ids_to_remove), ]
 
-# still a lot of age and sex missing, add those from the demographic db
-possiblecases_bl <- merge(possiblecases_bl, demographics, by.x = "individualid", by.y = "openhdsindividualId", all.x = T)
-possiblecases_bl$age[is.na(possiblecases_bl$age)] <- round(as.numeric(as.Date("2021-06-15") - as.Date(possiblecases_bl$dob.y[is.na(possiblecases_bl$age)]))/365.25,0)
-possiblecases_bl$GENDER <- possiblecases_bl$GENDER.x
-possiblecases_bl$GENDER[is.na(possiblecases_bl$GENDER.x)] <- possiblecases_bl$GENDER.y[is.na(possiblecases_bl$GENDER.x)]
+# complete missing dates
+possiblecases$datacolheita <- possiblecases$datacolheita.y
+possiblecases$datacolheita[is.na(possiblecases$datacolheita)] <- possiblecases$datacolheita.x[is.na(possiblecases$datacolheita)]
 
-# add age groups
-possiblecases_bl$agegr[possiblecases_bl$age<18] <- "0-17"
-possiblecases_bl$agegr[possiblecases_bl$age>17&possiblecases_bl$age<50] <- "18-49"
-possiblecases_bl$agegr[possiblecases_bl$age>49] <- "50+"
+# link case and participant data
+# confirmed cases
+confirmedcases <- possiblecases %>% filter(testresult=="positive") %>% select(individualid, testresult, datacolheita)
+cases_participants <- merge(confirmedcases, participants, by.x = "individualid", by.y = "openhdsindividualId", all = T)
+table(cases_participants$testresult, useNA = "always")
+# remove anyone without baseline data nor result
+cases_participants <- cases_participants %>% filter(!is.na(testresult) | !is.na(locationid))
+# remove those without baseline demographics (age, sex)
+cases_participants <- cases_participants %>% filter(!is.na(age) & !is.na(GENDER))
 
-# export database
-write.csv(possiblecases_bl, file = "possiblecases_bl.csv")
+# first COVID-19
+# sort the dataframe by 'datadacolheita' in ascending order
+sorted_cases <- confirmedcases %>% arrange(datacolheita)
+# Keep only the first row for each 'individualid'
+confirmedcases_firstonly <- sorted_cases %>% group_by(individualid) %>% slice(1)
+confirmedcases_firstonly_participants <- merge(confirmedcases_firstonly, participants, by.x = "individualid", by.y = "openhdsindividualId", all = T)
+# remove anyone without baseline data nor result
+confirmedcases_firstonly_participants <- confirmedcases_firstonly_participants %>% filter(!is.na(testresult) | !is.na(locationid))
+# remove those without baseline demographics (age, sex)
+confirmedcases_firstonly_participants <- confirmedcases_firstonly_participants %>% filter(!is.na(age) & !is.na(GENDER))
+# # remove unnecessary variables
+# confirmedcases_firstonly_participants <- confirmedcases_firstonly_participants %>% select(-dob,                                                                                    -ID,-datacolheita.x, -datacolheita.y, -start.y, -key)
+table(confirmedcases_firstonly_participants$testresult, useNA = "always") # 137 positives
 
-## 3.4 F2 active surveillance follow-up
+# export databases
+write_xlsx(possiblecases, "possiblecases.xlsx") 
+write_xlsx(cases_participants, "cases_participants.xlsx") 
+write_xlsx(confirmedcases_firstonly_participants, "confirmedcases_firstonly_participants.xlsx") 
+
+## 3.4 outcome of cases
+F6 <- xl.read.file("database/20221123/Africover F6 Confirmed case FU_full_DB.xlsx", password = "africover_1")
+table(F6$follow_up)
+table(F6$health_status)
+table(F6$outcome, useNA = "always")
+F6$outcome[F6$health_status56=="Recuperado/Saudável "] <- "cured"
+F6$outcome[F6$health_status=="Óbito"] <- "dead"
+F6$outcome[is.na(F6$health_status56) & F6$health_status=="Recuperado/Saudável "] <- "cured"
+F6$outcome[is.na(F6$health_status) & F6$health_status56=="Não sabe"] <- "unknown"
+F6$outcome[is.na(F6$outcome) & F6$health_status56=="Outro, especificar"] <- "not cured"
+F6$outcome[is.na(F6$outcome) & F6$health_status=="Outro, especificar"] <- "not cured"
+# Define the desired order of outcome levels
+desired_order <- c("dead", "cured", "not cured", "unknown")
+# Convert "outcome" to a factor with the desired order
+F6$outcome <- factor(F6$outcome, levels = desired_order, ordered = TRUE)
+# Sort the dataframe by outcome
+F6 <- F6 %>% arrange(outcome)
+# Group the data by individualid and select the first observation for each group
+F6_summary <- F6 %>% group_by(individualid) %>% slice(1)
+# Remove the grouping
+F6_summary <- F6_summary %>% ungroup()
+# link to case data
+caseoutcomes <- merge(F6_summary, possiblecases, by = "individualid", all.x = T)
+# exclude negative cases
+table(caseoutcomes$testresult, caseoutcomes$outcome)
+
+## 3.5 F2 active surveillance follow-up
 # household part
 #  F2 <- read_excel("database/20220323/F2.xlsx")
 FU <- xl.read.file("database/20221123/Africover F2 Follow Up_full_DB.xlsx", password = "africover_1")
@@ -984,3 +1044,22 @@ DBS_collected_several <- subset(DBS_collected_several, DBS_collected_several$n>1
 # add data de colheita -> merge on ID and round
 DBS_collected_several_datacolheita <- merge(DBS_collected_several, DBS_inventorio_INS, by = c("openhdsindividualId","round"), all.x = T)
 write.csv(DBS_collected_several_datacolheita, file = "DBS_collected_several_datacolheita.csv")
+
+# descriptive
+# DBS inclusions_by_age
+serosurveymerged_short_demographics$age <- round(as.numeric((serosurveymerged_short_demographics$data_da_colheita - as.Date(serosurveymerged_short_demographics$`individualInfo:dateOfBirth`)))/365.25,0)
+serosurveymerged_short_demographics$agegr[serosurveymerged_short_demographics$age<18] <- "<18"
+serosurveymerged_short_demographics$agegr[serosurveymerged_short_demographics$age>17&serosurveymerged_short_demographics$age<50] <- "18-49"
+serosurveymerged_short_demographics$agegr[serosurveymerged_short_demographics$age>49] <- ">/=50"
+
+table(serosurveymerged_short_demographics$age)
+# number of visits per DBS participant
+DBSparticipants <- serosurveymerged_short_demographics %>%
+  group_by(openhdsindividualId, age, agegr) %>%
+  summarise(n=n())
+DBSparticipants
+count(DBSparticipants)
+table(DBSparticipants$n)
+# age distribution
+hist(DBSparticipants$age, breaks = 20, main = NULL, xlab = "Age (years)")
+prop.table(table(DBSparticipants$agegr))
