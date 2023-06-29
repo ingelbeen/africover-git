@@ -4,22 +4,76 @@
 #############################################################################
 
 # install/load packages
-pacman::p_load(readxl,lubridate, ggplot2, ggmap, httr, lmtest, scales, usethis, tidyverse, stringr, purrr, gtsummary, broom, lmtest, parameters, see)
+pacman::p_load(readxl,lubridate, ggplot2, ggmap, survival, flextable, janitor, knitr, httr, lmtest, scales, usethis, tidyverse, stringr, purrr, gtsummary, broom, lmtest, parameters, see)
 
+# import data of possible cases
+possiblecases <- read_excel("possiblecases.xlsx")
 # import data of possible cases with baseline
-possiblecases_bl <- read.csv("./possiblecases_bl.csv")
-# create a variable month
-possiblecases_bl$month <- format(as.Date(possiblecases_bl$datacolheita, "%Y-%m-%d"), "%Y-%m")
-table(possiblecases_bl$month)
-
+cases_participants <- read_excel("cases_participants.xlsx")
+# import data of participants with COVID-19 confirmations
+confirmedcases_firstonly_participants<- read_excel("confirmedcases_firstonly_participants.xlsx")
 # import all participant data
 participants <- read.csv("participants.csv")
-
 # import household visit data
 FU <- read.csv("FU.csv")
-
 # import geo coordinates of households
 visit_geompoints <- read.csv("visit_geompoints.csv")
+
+# combine confirmedcases_firstonly_participants and FU
+# add the time under follow-up to make a denominator person-months
+FUbyHH <- FU %>% group_by(locationId) %>% summarise(nvisits=n())
+sum(FUbyHH$nvisits)
+cases_participantsFU <- merge(confirmedcases_firstonly_participants, FUbyHH, by.x = "locationid", by.y = "locationId", all.x = T)
+cases_participantsFU$time <- cases_participantsFU$nvisits/2 # number of person-months followed up
+# STILL HAVE TO REMOVE THE PM AFTER THE EVENT OCCURRED!!
+# remove those participants that haven't been followed-up
+cases_participantsFU <- cases_participantsFU %>% filter(!is.na(pm))
+# check and remove duplicated rows 
+dups = which(duplicated(cases_participantsFU%>%select('individualid','testresult')))
+cases_participantsFU <- cases_participantsFU %>% filter(!row.names(cases_participantsFU) %in% dups)
+
+# make factors of explanatory variables
+cases_participantsFU$overweight[!is.na(cases_participantsFU$BMI)] <- "normal"
+cases_participantsFU$overweight[cases_participantsFU$BMI>24.99] <- "overweight"
+cases_participantsFU$overweight[cases_participantsFU$BMI>29.99] <- "obesity"
+cases_participantsFU$overweight[cases_participantsFU$BMI<19] <- "underweight"
+cases_participantsFU$overweight <- factor(cases_participantsFU$overweight)
+cases_participantsFU$education[cases_participantsFU$ednivel_educacao=="1.  Primario incompleto"] <- "none completed"
+cases_participantsFU$education[cases_participantsFU$ednivel_educacao=="8. Nenhum"] <- "none completed"
+cases_participantsFU$education[cases_participantsFU$ednivel_educacao=="2. Primario completo"] <- "primary"
+cases_participantsFU$education[cases_participantsFU$ednivel_educacao=="7. Pos-graduacao"] <- "higher"
+cases_participantsFU$education[cases_participantsFU$ednivel_educacao=="6. Superior"] <- "higher"
+cases_participantsFU$education[cases_participantsFU$ednivel_educacao=="5. Tecnico-profissional"] <- "higher"
+cases_participantsFU$education[grepl("cundario incom", cases_participantsFU$ednivel_educacao)==T] <- "primary"
+cases_participantsFU$education[cases_participantsFU$ednivel_educacao=="4. Secundario completo"] <- "secondary"
+cases_participantsFU$education <- factor(cases_participantsFU$education)
+cases_participantsFU$hypertensionbin[cases_participantsFU$hypertension=="Não diagnosticado "] <- 0
+cases_participantsFU$hypertensionbin[cases_participantsFU$hypertension=="Diagnostico previo ou evento mas Não acompanhado"] <- 1
+cases_participantsFU$hypertensionbin[cases_participantsFU$hypertension=="Diagnosticado, em seguimento mas SEM tratamento especifico"] <- 1
+cases_participantsFU$hypertensionbin[cases_participantsFU$hypertension=="Diagnosticado, em acompanhamento com tratamento especifico"] <- 1
+cases_participantsFU$diabetesbin[cases_participantsFU$diabet=="Não diagnosticado"] <- 0
+cases_participantsFU$diabetesbin[cases_participantsFU$diabet=="Diagnosticado, em acompanhamento com tratamento especifico"] <- 1
+cases_participantsFU$lowestSES[!is.na(cases_participantsFU$SesScoreQnt=="1. very low")] <- 0
+cases_participantsFU$lowestSES[cases_participantsFU$SesScoreQnt=="1. very low"] <- 1
+cases_participantsFU$hivbin[cases_participantsFU$hiv=="Crianca exposta"] <- 1
+cases_participantsFU$hivbin[cases_participantsFU$hiv=="Seropositivo e em tratamento anti-retroviral"] <- 1
+cases_participantsFU$hivbin[cases_participantsFU$hiv=="estado desconhecido"] <- 0
+cases_participantsFU$hivbin[cases_participantsFU$hiv=="HIV negativo (no momento do ultimo teste HIV)"] <- 0
+cases_participantsFU$agegr <- factor(cases_participantsFU$agegr)
+cases_participantsFU$sex <- factor(cases_participantsFU$GENDER)
+
+# change category to use as reference
+cases_participantsFU <- cases_participantsFU %>% 
+  mutate(agegr = fct_relevel(agegr, "0-17", after = 0)) 
+cases_participantsFU <- cases_participantsFU %>% 
+  mutate(sex = fct_relevel(sex, "M", after = 0)) 
+
+# smaller age groups
+breaks <- c(seq(0, 60, by = 10), 70, Inf)
+# Create factor variable 'agegr'
+cases_participantsFU$agegr10 <- cut(cases_participantsFU$age, breaks = breaks, labels = c("0-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70+"), right = FALSE)
+cases_participantsFU$agegr10 <- factor(cases_participantsFU$agegr10)
+table(cases_participantsFU$agegr10)
 
 #### 1. HOUSEHOLD VISITS & EPICURVE ####
 # number of visits
@@ -35,11 +89,11 @@ max(geopoints$latitude[!is.na(geopoints$latitude)])
 min(geopoints$longitude[!is.na(geopoints$longitude)])
 max(geopoints$longitude[!is.na(geopoints$longitude)])
 # set the map extent
-maputo_bbox <- c(left = 32.59, bottom = -25.95, right = 32.63, top = -25.923)
+maputo_bbox <- c(left = 32.59, bottom = -25.95, right = 32.625, top = -25.923)
 # Get the map using the Stamen source
 # maputo <- get_openstreetmap(bbox = maputo_bbox) # doesn't work for now
 # maputo <- get_stamenmap(bbox = maputo_bbox, maptype = "toner-lite", zoom = 16) 
-maputo <- get_stamenmap(bbox = maputo_bbox, maptype = "terrain", zoom = 16)
+maputo <- get_stamenmap(bbox = maputo_bbox, maptype = "terrain", zoom = 15)
 # api_key <- "HZlfIpAihcDRbZ95DIvK9g"
 # # Get the map using Here Maps
 # maputo <- get_heremap(app_id = NULL, app_code = NULL, api_key = api_key, 
@@ -52,26 +106,29 @@ dottedmapvisits <- ggmap(maputo) +
   scale_color_gradient(low = "#ADD8E6", high = "#000080") +
   guides(size = FALSE, shape = FALSE) +
   labs(color = "Number of \nhousehold visits") +
-  theme(legend.title = element_text(size = 9)) +
+  theme(legend.title = element_text(size = 9),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        plot.background = element_rect(fill = "transparent", colour = NA)) +
   scale_x_continuous(labels = scales::number_format(accuracy = 0.01), expand = c(0, 0)) +
   scale_y_continuous(labels = scales::number_format(accuracy = 0.01), expand = c(0, 0)) +
   theme(plot.margin = unit(c(0,0,0,0), "cm"))
 dottedmapvisits
-ggsave("dottedmapvisits.jpg", dottedmapvisits, dpi = 300, width = 8, height = 6)
+ggsave("dottedmapvisits.jpg", dottedmapvisits, dpi = 300, width = 6.5, height = 5)
 
 # plot the map of HH visits using ggmap and add the point layer
 dottedmapcases <- ggmap(maputo) + 
-  geom_point(data = visit_geompoints, aes(x = longitude, y = latitude, color = n),
+  geom_point(data = cases_geompoints, aes(x = longitude, y = latitude, color = testresult),
              alpha = 0.3) +
-  scale_color_gradient(low = "#ADD8E6", high = "#000080") +
   guides(size = FALSE, shape = FALSE) +
-  labs(color = "Number of \nhousehold visits") +
-  theme(legend.title = element_text(size = 9)) +
+  labs(color = "Possible cases \ntest result") +
+  theme(legend.title = element_text(size = 9),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        plot.background = element_rect(fill = "transparent", colour = NA)) +
   scale_x_continuous(labels = scales::number_format(accuracy = 0.01), expand = c(0, 0)) +
   scale_y_continuous(labels = scales::number_format(accuracy = 0.01), expand = c(0, 0)) +
   theme(plot.margin = unit(c(0,0,0,0), "cm")) 
 dottedmapcases
-ggsave("dottedmapcases.jpg", dottedmapcases, dpi = 300, width = 8, height = 6)
+ggsave("dottedmapcases.jpg", dottedmapcases, dpi = 300, width = 6.5, height = 5)
 
 # plot of weekly visits
 FU_weekly <- FU %>%
@@ -124,13 +181,43 @@ ggsave(plot = histogramcases,"histogramcases.jpg", width = 10, height = 5, dpi =
 
 #### 2. DESCRIPTION OF PARTICIPANTS ####
 # describe number of participants and HHs
-count(participants)
-table(participants$agegr, useNA = "always")
-nHH <- participants %>%
+count(cases_participantsFU)
+table(cases_participantsFU$agegr, useNA = "always")
+nHH <- cases_participantsFU %>%
   group_by(locationid) %>%
   summarise(n=n())
 count(nHH) # 1489
 mean(nHH$n) # mean HH size = 4.03
+
+# mean age participants
+cases_participantsFU %>%
+  filter(!is.na(age)) %>%
+  summarise(median=median(age),q25=quantile(age,0.25), q75=quantile(age,0.75))
+
+# sex distribution
+table(cases_participantsFU$sex)
+round(prop.table(table(cases_participantsFU$sex))*100,1)
+
+# hypertension distribution
+table(cases_participantsFU$hypertensionbin, useNA = "always")
+round(prop.table(table(cases_participantsFU$hypertensionbin))*100,1)
+
+# hypertension distribution
+table(cases_participantsFU$diabetesbin, useNA = "always")
+round(prop.table(table(cases_participantsFU$diabetesbin))*100,1)
+
+# hiv distribution
+table(cases_participantsFU$hivbin, useNA = "always")
+round(prop.table(table(cases_participantsFU$hivbin))*100,1)
+
+# SES distribution
+table(cases_participantsFU$SesScoreQnt, useNA = "always")
+round(prop.table(table(cases_participantsFU$SesScoreQnt))*100,1)
+
+# education distribution
+table(cases_participantsFU$education, useNA = "always")
+round(prop.table(table(cases_participantsFU$education))*100,1)
+6190-1349
 
 # mark which participant had symptoms, and which tested covid +
 possiblecases$confirmed <- 0
@@ -148,88 +235,76 @@ table(participantstest$possibleconfirmed)
 # create a histogram of age distribution, facetted by the possibleconfirmed variable
 participantstest$possibleconfirmed <- factor(participantstest$possibleconfirmed, 
                                          levels = c("participants", "COVID-19 negative", "confirmed COVID-19"))
-
 agehistogram <- ggplot(participantstest, aes(x = age)) +
   geom_histogram(bins = 20, color = "white", fill = "steelblue") +
-  facet_wrap(~ possibleconfirmed, scales = "free_y") +
-  labs(title = "Age Distribution among participants, possible and confirmed COVID-19 cases",
+  facet_wrap(~ possibleconfirmed, scales = "free_y", dir = "v") +
+  labs(title = "Age Distribution among participants, \npossible and confirmed COVID-19 cases",
        x = "Age", y = "Count")
-agehistogram
-ggsave(plot = agehistogram,"agehistogram.jpg", width = 7, height = 4, dpi = 300)
-
-# sex distribution
-sextable <- table(participantstest$possibleconfirmed,participantstest$GENDER)
-round(prop.table(sextable, 1)*100,0)
-sextable_possible <- table(possiblecases_bl$testresult,possiblecases_bl$GENDER)
-round(prop.table(sextable_possible, 1)*100,0)
+print(agehistogram)
+ggsave(plot = agehistogram,"agehistogram.jpg", width = 5, height = 5, dpi = 300)
 
 #### 3. DESCRIPTION OF POSSIBLE CASES ####
 # number of possible cases, in number of households, & number of cases tested
-possiblecases_bl %>% group_by(visitid) %>% dplyr::summarise(n=n())
+cases_participants %>% group_by(visitid) %>% dplyr::summarise(n=n())
 761-134
 
-# mean age participants
-participants %>%
-  filter(!is.na(age)) %>%
-  summarise(median=median(age),q25=quantile(age,0.25), q75=quantile(age,0.75))
-
 # mean age possible cases, by test result
-possiblecases_bl %>%
+cases_participants %>%
   filter(!is.na(age)) %>%
   group_by(testresult) %>%
   summarise(median=median(age),q25=quantile(age,0.25), q75=quantile(age,0.75))
 
 # age & sex distribution of possible cases
-table(possiblecases_bl$agegr)
-prop.table(table(possiblecases_bl$agegr))
+table(cases_participants$agegr)
+prop.table(table(cases_participants$agegr))
 
-table(possiblecases_bl$sexo)
-prop.table(table(possiblecases_bl$sexo))
+table(cases_participants$sexo)
+prop.table(table(cases_participants$sexo))
 
 # symptoms and onset
-table(possiblecases_bl$symptoms)
+table(cases_participants$symptoms)
 # fever
-table(possiblecases_bl$fever)
-prop.table(table(possiblecases_bl$fever))
+table(cases_participants$fever)
+prop.table(table(cases_participants$fever))
 # anosmia
-table(possiblecases_bl$anosmia)
-prop.table(table(possiblecases_bl$anosmia))
+table(cases_participants$anosmia)
+prop.table(table(cases_participants$anosmia))
 # aguesia
-table(possiblecases_bl$ageusia)
-prop.table(table(possiblecases_bl$ageusia))
+table(cases_participants$ageusia)
+prop.table(table(cases_participants$ageusia))
 # at least one resp symptom
-possiblecases_bl$atleastonesympt <- 0
-possiblecases_bl$atleastonesympt[possiblecases_bl$throat=="Sim"] <- 1
-possiblecases_bl$atleastonesympt[possiblecases_bl$cough=="Sim"] <- 1
-possiblecases_bl$atleastonesympt[possiblecases_bl$dyspnoea=="Sim"] <- 1
-possiblecases_bl$atleastonesympt[possiblecases_bl$rhinorrhea=="Sim"] <- 1
-possiblecases_bl$atleastonesympt[possiblecases_bl$throat=="Sim"] <- 1
-possiblecases_bl$atleastonesympt[possiblecases_bl$O2under95=="yes"] <- 1
-table(possiblecases_bl$atleastone)
-prop.table(table(possiblecases_bl$atleastone))
+cases_participants$atleastonesympt <- 0
+cases_participants$atleastonesympt[cases_participants$throat=="Sim"] <- 1
+cases_participants$atleastonesympt[cases_participants$cough=="Sim"] <- 1
+cases_participants$atleastonesympt[cases_participants$dyspnoea=="Sim"] <- 1
+cases_participants$atleastonesympt[cases_participants$rhinorrhea=="Sim"] <- 1
+cases_participants$atleastonesympt[cases_participants$throat=="Sim"] <- 1
+cases_participants$atleastonesympt[cases_participants$O2under95=="yes"] <- 1
+table(cases_participants$atleastone)
+prop.table(table(cases_participants$atleastone))
 
 # comorbidities
 table(participants$hiv, useNA = "always")
 (410+25+15)/6006
 
 # delay between onset and nasal swab
-date_heita = as.Date(possiblecases_bl$datacolheita[!is.na(possiblecases_bl$datacolheita)&!is.na(possiblecases_bl$data_inicio_sintomas)], format = "%Y-%m-%d") 
-date_sinto = as.Date(possiblecases_bl$data_inicio_sintomas[!is.na(possiblecases_bl$datacolheita)&!is.na(possiblecases_bl$data_inicio_sintomas)], format = "%Y-%m-%d") 
+date_heita = as.Date(cases_participants$datacolheita[!is.na(cases_participants$datacolheita)&!is.na(cases_participants$data_inicio_sintomas)], format = "%Y-%m-%d") 
+date_sinto = as.Date(cases_participants$data_inicio_sintomas[!is.na(cases_participants$datacolheita)&!is.na(cases_participants$data_inicio_sintomas)], format = "%Y-%m-%d") 
 
-possiblecases_bl$delay[!is.na(possiblecases_bl$datacolheita)&!is.na(possiblecases_bl$data_inicio_sintomas)] <- date_heita-date_sinto
-mean(possiblecases_bl$delay[!is.na(possiblecases_bl$delay)])
-median(possiblecases_bl$delay[!is.na(possiblecases_bl$delay)])
-quantile(possiblecases_bl$delay[!is.na(possiblecases_bl$delay)],0.25)
-quantile(possiblecases_bl$delay[!is.na(possiblecases_bl$delay)],0.50)
-quantile(possiblecases_bl$delay[!is.na(possiblecases_bl$delay)],0.75)
+cases_participants$delay[!is.na(cases_participants$datacolheita)&!is.na(cases_participants$data_inicio_sintomas)] <- date_heita-date_sinto
+mean(cases_participants$delay[!is.na(cases_participants$delay)])
+median(cases_participants$delay[!is.na(cases_participants$delay)])
+quantile(cases_participants$delay[!is.na(cases_participants$delay)],0.25)
+quantile(cases_participants$delay[!is.na(cases_participants$delay)],0.50)
+quantile(cases_participants$delay[!is.na(cases_participants$delay)],0.75)
 
 # describe frequencies
 # results
-table(possiblecases_bl$testresult, useNA = "always")
-round(prop.table(table(possiblecases_bl$testresult))*100,2)
+table(cases_participants$testresult, useNA = "always")
+round(prop.table(table(cases_participants$testresult))*100,2)
 
 # histogram possible case number
-monthlypossiblecases <- possiblecases_bl %>%
+monthlypossiblecases <- cases_participants %>%
   filter(testresult!="nao identificado nas duas bases"&testresult!="si") %>%
   group_by(month, testresult) %>%
   summarise(n=n())
@@ -243,9 +318,9 @@ monthlypossiblecasesplot <- ggplot(monthlypossiblecases, aes(x=month, y=n, fill=
 monthlypossiblecasesplot
 
 # table cases per month
-table(possiblecases_bl$month)
-table(possiblecases_bl$month, possiblecases_bl$testresult)
-prop.table(table(possiblecases_bl$month, possiblecases_bl$testresult),1)*100
+table(cases_participants$month)
+table(cases_participants$month, cases_participants$testresult)
+prop.table(table(cases_participants$month, cases_participants$testresult),1)*100
 # using a moving average over 7 days
 # summarize daily possible case number
 
@@ -293,21 +368,21 @@ possiblecasescurve <- ggplot(possiblecasestsMA7days, aes(x=date, y=MA7days, fill
 possiblecasescurve
 
 #### 5. CT in function of AGE and DELAY ####
-possiblecases_bl$collectiondate <- possiblecases_bl$datacolheita.x
-possiblecases_bl$collectiondate[is.na(possiblecases_bl$datacolheita.x)] <- possiblecases_bl$datacolheita.y[is.na(possiblecases_bl$datacolheita.x)]
-possiblecases_bl$delay <- as.numeric(as.Date(possiblecases_bl$collectiondate)-as.Date(possiblecases_bl$data_inicio_sintomas))
-possiblecases_bl$delay <- ifelse(possiblecases_bl$delay < 0, 0, possiblecases_bl$delay)
+cases_participants$collectiondate <- cases_participants$datacolheita.x
+cases_participants$collectiondate[is.na(cases_participants$datacolheita.x)] <- cases_participants$datacolheita.y[is.na(cases_participants$datacolheita.x)]
+cases_participants$delay <- as.numeric(as.Date(cases_participants$collectiondate)-as.Date(cases_participants$data_inicio_sintomas))
+cases_participants$delay <- ifelse(cases_participants$delay < 0, 0, cases_participants$delay)
 
 # summarize delay
-possiblecases_bl %>% filter(!is.na(delay)) %>% summarise(median=median(delay),q25=quantile(delay,0.25),q75=quantile(delay,0.75))
+cases_participants %>% filter(!is.na(delay)) %>% summarise(median=median(delay),q25=quantile(delay,0.25),q75=quantile(delay,0.75))
 # by age group
-possiblecases_bl %>% filter(!is.na(delay)) %>% group_by(agegr) %>% summarise(median=median(delay),q25=quantile(delay,0.25),q75=quantile(delay,0.75))
+cases_participants %>% filter(!is.na(delay)) %>% group_by(agegr) %>% summarise(median=median(delay),q25=quantile(delay,0.25),q75=quantile(delay,0.75))
 
 # select only confirmed cases                            
-confirmed <- possiblecases_bl %>% filter(testresult=="positive")
+confirmed <- cases_participants %>% filter(testresult=="positive")
 
 # CT values
-confirmed$ct <- as.numeric(possiblecases_bl$valorct)
+confirmed$ct <- as.numeric(cases_participants$valorct)
 # summarize
 confirmed %>% filter(!is.na(ct)) %>% summarise(median=median(ct),q25=quantile(ct,0.25),q75=quantile(ct,0.75))
 confirmed %>% filter(!is.na(ct)) %>% group_by(agegr) %>% summarise(median=median(ct),q25=quantile(ct,0.25),q75=quantile(ct,0.75))
@@ -332,10 +407,68 @@ scatterCTage <- ggplot(confirmed, aes(x = delay, y = ct)) +
   facet_wrap(~ agegr, ncol = 1)
 ggsave(plot = scatterCTage,"scatterCTage.jpg", width = 5, height = 10, dpi = 300)
 
+#### 6. FACTORS ASSOCIATED WITH COVID-19 ####
+# dataframe confirmedcases_firstonly_participants has baseline and demographic data of all participants, plus indicated those who were COVID-19 positive
+# generate a variable 'event' so say who had the event
+cases_participantsFU$event <- 0
+cases_participantsFU$event[cases_participantsFU$testresult=="positive"] <- 1
+cases_participantsFU$eventf <- factor(cases_participantsFU$event)
+table(cases_participantsFU$eventf)
 
-#### 5. FACTORS ASSOCIATED WITH POSITIVE RESULT ####
+# univar table
+age <- cases_participantsFU %>%
+  group_by(agegr10) %>%
+  summarise(total=n(), pcttotal=(round(n()/count(cases_participantsFU)*100,1)), covid19=sum(event), pctcases=round(sum(event)/sum(cases_participantsFU$event)*100,1))
+sex <- cases_participantsFU %>%
+  group_by(sex) %>%
+  summarise(total=n(), pcttotal=(round(n()/count(cases_participantsFU)*100,1)), covid19=sum(event), pctcases=round(sum(event)/sum(cases_participantsFU$event)*100,1))
+table(cases_participantsFU$lowestSES, useNA = "always")
+SES <- cases_participantsFU %>%
+  filter(!is.na(lowestSES)) %>%
+  group_by(lowestSES) %>%
+  summarise(
+    total = n(),
+    pcttotal = (n() / sum(!is.na(cases_participantsFU$lowestSES))) * 100,
+    covid19 = sum(event),
+    pctcases = (sum(event) / sum(cases_participantsFU$event[!is.na(cases_participantsFU$lowestSES)])) * 100
+  )
+education <- cases_participantsFU %>%
+  filter(!is.na(education)) %>%
+  group_by(education) %>%
+  summarise(
+    total = n(),
+    pcttotal = (n() / sum(!is.na(cases_participantsFU$education))) * 100,
+    covid19 = sum(event),
+    pctcases = (sum(event) / sum(cases_participantsFU$event[!is.na(cases_participantsFU$education)])) * 100
+  )
+# cox regression calculating hazard ratios
+# Fit Cox regression models for each variable
+explanatory_variables <- c("agegr10", "education", "overweight", "lowestSES", "hivbin", "hypertensionbin", "diabetesbin")
+
+for (variable in explanatory_variables) {
+  # Create a formula including the variable, age, and sex
+  formula <- as.formula(paste("Surv(time, event) ~ ", variable, "+ age + sex"))
+  
+  # Fit the Cox regression model
+  cox_model <- coxph(formula, data = cases_participantsFU)
+  
+  # Extract hazard ratios and their confidence intervals
+  hr_ci <- exp(coef(cox_model))
+  ci <- exp(confint(cox_model))
+  
+  # Print the results
+  cat("Variable:", variable, "\n")
+  cat("Hazard Ratios:\n")
+  print(hr_ci)
+  cat("Confidence Intervals:\n")
+  print(ci)
+  cat("\n")
+}
+
+
+#### 5. SYMPTOMS ASSOCIATED WITH COVID-19 AMONG ARI CASES ####
 # subset database to keep only those with results
-testedpossiblecases <- possiblecases_bl %>% filter(testresult=="positive" | testresult=="negative")
+testedpossiblecases <- cases_participants %>% filter(testresult=="positive" | testresult=="negative")
 
 # frequencies confirmed
 table(testedpossiblecases$testresult, useNA = "always")
@@ -518,12 +651,12 @@ glm(testresult ~ O2under95 + agegr, family = "poisson", data = testedpossiblecas
 
 # HIV
 # among possible cases
-table(possiblecases_bl$hiv)
-prop.table(table(possiblecases_bl$hiv))
+table(cases_participants$hiv)
+prop.table(table(cases_participants$hiv))
 
 # among confirmed cases
-table(possiblecases_bl$hiv[possiblecases_bl$testresult=="positive"])
-prop.table(table(possiblecases_bl$hiv[possiblecases_bl$testresult=="positive"]))
+table(cases_participants$hiv[cases_participants$testresult=="positive"])
+prop.table(table(cases_participants$hiv[cases_participants$testresult=="positive"]))
 
 # adjusting for age
 testedpossiblecases$hivbin[testedpossiblecases$hiv=="Crianca exposta"] <- 1
@@ -562,8 +695,8 @@ table(participants$SesScoreQnt)
 prop.table(table(participants$SesScoreQnt))
 
 # among confirmed cases
-table(possiblecases_bl$SesScoreQnt)
-prop.table(table(possiblecases_bl$SesScoreQnt[possiblecases_bl$testresult=="positive"]))
+table(cases_participants$SesScoreQnt)
+prop.table(table(cases_participants$SesScoreQnt[cases_participants$testresult=="positive"]))
 
 # adjusting for age
 
@@ -577,8 +710,8 @@ table(participants$ednivel_educacao)
 prop.table(table(participants$ednivel_educacao))
 
 # among confirmed cases
-table(possiblecases_bl$ednivel_educacao)
-prop.table(table(possiblecases_bl$ednivel_educacao[possiblecases_bl$testresult=="positive"]))
+table(cases_participants$ednivel_educacao)
+prop.table(table(cases_participants$ednivel_educacao[cases_participants$testresult=="positive"]))
 
 
 #### 6. INCIDENCE OF (symptomatic) COVID-19 ####
