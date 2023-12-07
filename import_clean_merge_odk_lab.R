@@ -224,6 +224,32 @@ list_weight_height_problems <- participants %>%
   select(openhdsindividualId, GENDER, age, weight, height, BMI, MUAC)
 write.table(list_weight_height_problems, file = "list_weight_height_problems.txt")
 
+# add missing comorbidity data, collected or diagnosed at a later date in form F7, such as new diagnoses of HIV, chronic conditions, etc.
+F7 <- xl.read.file("database/20231122/Africover F7 Comorbidities_rawDB_1Labels.xlsx", password = "africover_1")
+# select only variables with values and keep one row per participant
+F7 <- F7 %>% filter(medical_condition=="sim") %>%
+  filter(any(!is.na(pregnancy_history) | !is.na(cancer) | !is.na(diabet) | !is.na(hiv) | !is.na(hiv_pos_neg) | !is.na(hypertension) | !is.na(hearth_diseases) | !is.na(chronic_lung_disease) | !is.na(chronic_liver_disease) | !is.na(chronic_hematological_disease))) %>%
+  select(individualid, start, pregnancy_history, cancer, diabet, hiv, hiv_pos_neg, hypertension, hearth_diseases, chronic_lung_disease, chronic_liver_disease, chronic_hematological_disease) %>%
+  group_by(individualid) %>%
+  arrange(desc(start)) %>%
+  slice(1) %>%
+  ungroup()
+F7 <- F7 %>% select(-start, -hiv_pos_neg)
+  
+# replace missing comorbidity data in the baseline database with that from the F7 forms
+participants <- participants %>%
+  left_join(F7, by = c("openhdsindividualId" = "individualid")) %>%
+  mutate(hiv = ifelse((is.na(hiv.x) | str_detect(hiv.x, "Não")) & !is.na(hiv.y), hiv.y, hiv.x)) %>%
+  mutate(pregnancy_history = ifelse((is.na(pregnancy_history.x) | str_detect(pregnancy_history.x, "Não")) & !is.na(pregnancy_history.y), pregnancy_history.y, pregnancy_history.x)) %>%
+  mutate(hypertension = ifelse((is.na(hypertension.x) | str_detect(hypertension.x, "Não d")) & !is.na(hypertension.y), hypertension.y, hypertension.x)) %>%
+  mutate(diabet = ifelse((is.na(diabet.x) | str_detect(diabet.x, "Não")) & !is.na(diabet.y), diabet.y, diabet.x)) %>%
+  mutate(cancer = ifelse((is.na(cancer.x) | str_detect(cancer.x, "Não")) & !is.na(cancer.y), cancer.y, cancer.x)) %>%
+  mutate(hearth_diseases = ifelse((is.na(hearth_diseases.x) | str_detect(hearth_diseases.x, "Não")) & !is.na(hearth_diseases.y), hearth_diseases.y, hearth_diseases.x)) %>%
+  mutate(chronic_lung_disease = ifelse((is.na(chronic_lung_disease.x) | str_detect(chronic_lung_disease.x, "Não")) & !is.na(chronic_lung_disease.y), chronic_lung_disease.y, chronic_lung_disease.x)) %>%
+  mutate(chronic_liver_disease = ifelse((is.na(chronic_liver_disease.x) | str_detect(chronic_liver_disease.x, "Não")) & !is.na(chronic_liver_disease.y), chronic_liver_disease.y, chronic_liver_disease.x)) %>%
+  mutate(chronic_hematological_disease = ifelse((is.na(chronic_hematological_disease.x) | str_detect(chronic_hematological_disease.x, "Não d")) & !is.na(chronic_hematological_disease.y), chronic_hematological_disease.y, chronic_hematological_disease.x)) %>%
+  select(-hiv.x, -hiv.y, -pregnancy_history.x, -pregnancy_history.y, -hypertension.x, -hypertension.y, -diabet.x, -diabet.y, -cancer.x, -cancer.y, -hearth_diseases.x, -hearth_diseases.y, -chronic_lung_disease.x, -chronic_lung_disease.y, -chronic_liver_disease.x, -chronic_liver_disease.y, -chronic_hematological_disease.x, -chronic_hematological_disease.y)
+
 # add age groups
 participants$agegr[participants$age<18] <- "0-17"
 participants$agegr[participants$age>17&participants$age<50] <- "18-49"
@@ -234,14 +260,10 @@ write.csv(participants, "participants.csv")
 participantssimpl <- participants %>% select(locationid, openhdsindividualId)
 write.csv(participantssimpl, "participantssimpl.csv")
 
-# import updates of comorbidities (F7), such as new diagnoses of HIV, chronic conditions, etc., once we have a version with factor variables as strings
-F7 <- xl.read.file("database/20221123/Africover F7 Comorbidities_full_DB.xlsx", password = "africover_1")
 # check which serosurvey participants had no baseline completed but recorded at a later time
 serosurvey_missingbl <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/africover git/serosurvey_missingbl.csv")
 serosurvey_missingbl <- serosurvey_missingbl %>% select(participantID)
 serosurvey_missingbl$missingbl <- 1
-F7 <- merge(F7, serosurvey_missingbl, by.x = "individualid", by.y = "participantID", all.x = T)
-sum(F7$missingbl[!is.na(F7$missingbl)])
 
 #### 3. ACTIVE SURVEILLANCE FOR POSSIBLE CASES ####
 ## 3.1 ODK possible case reports
