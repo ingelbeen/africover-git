@@ -1,5 +1,5 @@
 #############################################################################
-# AFRICOVER                                                                 #
+# Population-based COVID-19 surveillance, Maputo, Moz, Dec2020-Mar2022      #
 # Script to import, clean and merge ODK, HDSS demographic, and lab databases#
 #############################################################################
 # contributors: Catildo, Nilzio, Brecht
@@ -251,19 +251,15 @@ participants <- participants %>%
   select(-hiv.x, -hiv.y, -pregnancy_history.x, -pregnancy_history.y, -hypertension.x, -hypertension.y, -diabet.x, -diabet.y, -cancer.x, -cancer.y, -hearth_diseases.x, -hearth_diseases.y, -chronic_lung_disease.x, -chronic_lung_disease.y, -chronic_liver_disease.x, -chronic_liver_disease.y, -chronic_hematological_disease.x, -chronic_hematological_disease.y)
 
 # add age groups
-participants$agegr[participants$age<18] <- "0-17"
-participants$agegr[participants$age>17&participants$age<50] <- "18-49"
-participants$agegr[participants$age>49] <- "50+"
+participants$agegr[participants$age<18] <- "0-17 years"
+participants$agegr[participants$age>17.99&participants$age<50] <- "18-49 years"
+participants$agegr[participants$age>49.99] <- ">=50 years"
+participants$agegr <- factor(participants$agegr, levels = c("0-17 years", "18-49 years", ">=50 years"))
 
 # save file
 write.csv(participants, "participants.csv")
 participantssimpl <- participants %>% select(locationid, openhdsindividualId)
 write.csv(participantssimpl, "participantssimpl.csv")
-
-# check which serosurvey participants had no baseline completed but recorded at a later time
-serosurvey_missingbl <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/africover git/serosurvey_missingbl.csv")
-serosurvey_missingbl <- serosurvey_missingbl %>% select(participantID)
-serosurvey_missingbl$missingbl <- 1
 
 #### 3. ACTIVE SURVEILLANCE FOR POSSIBLE CASES ####
 ## 3.1 ODK possible case reports
@@ -793,6 +789,12 @@ cases_participantsFU$time <- cases_participantsFU$time + 0.5
 table(cases_participantsFU$time, useNA = "always")
 
 # make factors of explanatory variables
+cases_participantsFU$lowestSES[!is.na(cases_participantsFU$SesScoreQnt=="1. very low")] <- 0
+cases_participantsFU$lowestSES[cases_participantsFU$SesScoreQnt=="1. very low"] <- 1
+cases_participantsFU$SesScoreQnt <- factor(cases_participantsFU$SesScoreQnt)
+cases_participantsFU$agegr <- factor(cases_participantsFU$agegr)
+cases_participantsFU$sex <- factor(cases_participantsFU$GENDER)
+
 cases_participantsFU$overweight[!is.na(cases_participantsFU$BMI)] <- "normal"
 cases_participantsFU$overweight[cases_participantsFU$BMI>24.99&cases_participantsFU$BMI<30] <- "overweight"
 cases_participantsFU$overweight[cases_participantsFU$BMI>29.99&cases_participantsFU$BMI<50] <- "obesity"
@@ -813,15 +815,16 @@ cases_participantsFU$hypertensionbin[cases_participantsFU$hypertension=="Diagnos
 cases_participantsFU$hypertensionbin[cases_participantsFU$hypertension=="Diagnosticado, em acompanhamento com tratamento especifico"] <- 1
 cases_participantsFU$diabetesbin[cases_participantsFU$diabet=="Não diagnosticado"] <- 0
 cases_participantsFU$diabetesbin[cases_participantsFU$diabet=="Diagnosticado, em acompanhamento com tratamento especifico"] <- 1
-cases_participantsFU$lowestSES[!is.na(cases_participantsFU$SesScoreQnt=="1. very low")] <- 0
-cases_participantsFU$lowestSES[cases_participantsFU$SesScoreQnt=="1. very low"] <- 1
-cases_participantsFU$SesScoreQnt <- factor(cases_participantsFU$SesScoreQnt)
+cases_participantsFU$hypertensionbin[grepl("Não", cases_participantsFU$hypertension)==T] <- 0
+cases_participantsFU$hypertensionbin[grepl("Diagnosticado,", cases_participantsFU$hypertension)==T] <- 1
+cases_participantsFU$hypertensionbin[grepl("Diagnostico", cases_participantsFU$hypertension)==T] <- 1
+cases_participantsFU$diabetesbin[grepl("Não", cases_participantsFU$diabet)==T] <- 0
+cases_participantsFU$diabetesbin[grepl("Diagnosticado, em", cases_participantsFU$diabet)==T] <- 1
 cases_participantsFU$hivbin[cases_participantsFU$hiv=="Crianca exposta"] <- 1
-cases_participantsFU$hivbin[cases_participantsFU$hiv=="Seropositivo e em tratamento anti-retroviral"] <- 1
+cases_participantsFU$hivbin[grepl("Seropositivo", cases_participantsFU$hiv)==T] <- 1
 cases_participantsFU$hivbin[cases_participantsFU$hiv=="estado desconhecido"] <- 0
 cases_participantsFU$hivbin[cases_participantsFU$hiv=="HIV negativo (no momento do ultimo teste HIV)"] <- 0
-cases_participantsFU$agegr <- factor(cases_participantsFU$agegr)
-cases_participantsFU$sex <- factor(cases_participantsFU$GENDER)
+
 cases_participantsFU$smokingbin[grepl("fumador", cases_participantsFU$smoking)==T] <- "(ex-)smoker"
 cases_participantsFU$smokingbin[grepl("Fumador", cases_participantsFU$smoking)==T] <- "(ex-)smoker"
 cases_participantsFU$smokingbin[grepl("Nao", cases_participantsFU$smoking)==T] <- "non smoker"
@@ -841,9 +844,9 @@ cases_participantsFU$leukemia[!is.na(cases_participantsFU$cancer)] <- "not"
 cases_participantsFU$leukemia[grepl("malignidade hemato", cases_participantsFU$cancer)==T] <- "leukemia"
 cases_participantsFU$heart[!is.na(cases_participantsFU$hearth_diseases)] <- "not"
 cases_participantsFU$heart[grepl("Diagno", cases_participantsFU$hearth_diseases)==T] <- "heart disease"
-cases_participantsFU$lung[!is.na(cases_participantsFU$chronic_lung_disease)] <- "not"
-cases_participantsFU$lung[grepl("asma", cases_participantsFU$chronic_lung_disease)==T] <- "asthma"
-cases_participantsFU$lung[grepl("outra", cases_participantsFU$chronic_lung_disease)==T] <- "chronic pulmonary disease"
+cases_participantsFU$lungdisease[grepl("Nao", cases_participantsFU$chronic_lung_disease)==T] <- "not"
+cases_participantsFU$lungdisease[grepl("asma", cases_participantsFU$chronic_lung_disease)==T] <- "asthma"
+cases_participantsFU$lungdisease[grepl("outra", cases_participantsFU$chronic_lung_disease)==T] <- "chronic pulmonary disease"
 cases_participantsFU$tbbin[!is.na(cases_participantsFU$tb)] <- "not"
 cases_participantsFU$tbbin[grepl("tubercu", cases_participantsFU$tb)==T] <- "(history of) tuberculosis"
 cases_participantsFU$tbbin <- factor(cases_participantsFU$tbbin)
@@ -865,13 +868,13 @@ cases_participantsFU <- cases_participantsFU %>%
 cases_participantsFU <- cases_participantsFU %>% 
   mutate(tbbin = fct_relevel(tbbin, "not", after = 0)) 
 cases_participantsFU <- cases_participantsFU %>% 
-  mutate(lung = fct_relevel(lung, "not", after = 0)) 
+  mutate(lungdisease = fct_relevel(lungdisease, "not", after = 0)) 
 cases_participantsFU <- cases_participantsFU %>% 
-  mutate(lung = fct_relevel(water_availability, "Disponivel", after = 0)) 
+  mutate(water_availability = fct_relevel(water_availability, "Disponivel", after = 0)) 
 cases_participantsFU <- cases_participantsFU %>% 
-  mutate(lung = fct_relevel(publictransport_pastweek, "none", after = 0)) 
+  mutate(publictransport_pastweek = fct_relevel(publictransport_pastweek, "none", after = 0)) 
 cases_participantsFU <- cases_participantsFU %>% 
-  mutate(lung = fct_relevel(smokingbin, "non smoker", after = 0)) 
+  mutate(smokingbin = fct_relevel(smokingbin, "non smoker", after = 0)) 
 
 # generate a variable 'event' to say who had the event
 cases_participantsFU$event <- 0
@@ -1196,11 +1199,14 @@ serosurvey_noresults <- serosurvey_noresults %>%
 # DBS results (do not contain data de colheita, which we will have to add afterwards)
 serosurveyresults <- read_excel("database/20220323/DBSresults220318.xlsx", 
                          sheet = "All Data Info.")
-# remove rows of control panel results (not needed because the raw values have already been interpreted by Joachim)
+# interpreted results (RBD and NP positive) to lower
+serosurveyresults$Result <- tolower(serosurveyresults$Result)
+
+# remove rows of control panel results (not needed because thresholds (2.5 SD above average of all negative controls) determined in the excel file)
 serosurveyresults <- subset(serosurveyresults, participantsample==1)
 
 # remove other variables
-serosurveyresults <- serosurveyresults %>% select(participantID, plate, Result)
+serosurveyresults <- serosurveyresults %>% select(participantID, plate, analyte21_S1S2, analyte25_RBD, analyte26_NP, Result)
 # remove errors in IDs
 serosurveyresults$participantID[serosurveyresults$participantID=="QUOGJ1003009"] <- "QUOGJ1003009"
 serosurveyresults$participantID[serosurveyresults$participantID=="QUPC1009001"] <- "QU1PC1009001" # check later again, could also be QULPC1009001
@@ -1233,15 +1239,14 @@ serosurveyresults$participantID[serosurveyresults$participantID=="QUMM1002005"] 
 serosurveyresults$participantID[serosurveyresults$participantID=="QUNM1003002"] <- "QUNMU1003002"
 serosurveyresults$participantID[serosurveyresults$participantID=="QUOGJ1003009"] <- "QU0GJ1003009"
 serosurveyresults$participantID[serosurveyresults$participantID=="QURT10210033"] <- "QU5RT1021003"
+serosurveyresults$participantID[serosurveyresults$participantID=="QUGQM1005002"&serosurveyresults$plate=="plate19"] <- "QUGQM1005005"
 
 # check duplicated rows
-dups = which(duplicated(serosurveyresults%>%select(participantID, plate, Result)))
+dups = which(duplicated(serosurveyresults%>%select(participantID, plate)))
 length(dups)
 # Remove duplicated rows
 serosurveyresults <- serosurveyresults %>% filter(!row.names(serosurveyresults) %in% dups) 
 
-# remove capital letters in results
-serosurveyresults$Result <- tolower(serosurveyresults$Result)
 
 # count which occurrence it is of the participant
 serosurveyresults$v1 <- 1
@@ -1268,10 +1273,15 @@ serosurvey <- serosurvey %>% select(-c("seq.x","seq.y"))
 serosurvey$participantID[is.na(serosurvey$participantID)] <- serosurvey$openhdsindividualId[is.na(serosurvey$participantID)]
 
 # add var agegroup and agegr10
-serosurvey$agegr[serosurvey$age<18] <- "0-17"
-serosurvey$agegr[serosurvey$age>17&serosurvey$age<50] <- "18-49"
-serosurvey$agegr[serosurvey$age>49] <- ">=50"
-serosurvey$agegr <- factor(serosurvey$agegr, levels = c("0-17", "18-49", ">=50"))
+serosurvey$agegr[serosurvey$age<18] <- "0-17 years"
+serosurvey$agegr[serosurvey$age>17&serosurvey$age<50] <- "18-49 years"
+serosurvey$agegr[serosurvey$age>49] <- ">=50 years"
+serosurvey$agegr <- factor(serosurvey$agegr, levels = c("0-17 years", "18-49 years", ">=50 years"))
+table(serosurvey$agegr)
+
+# reformat date
+str(serosurvey$datacolheita)
+serosurvey$datacolheita[is.na(serosurvey$datacolheita)] <- as.Date(serosurvey$start[is.na(serosurvey$datacolheita)])
 
 # export to check
 write.table(serosurvey, file = "serosurvey.txt")
