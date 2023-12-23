@@ -1,6 +1,8 @@
 #############################################################################
-# AFRICOVER                                                                 #
-# Script to estimate disease incidence (cases from active surveillance)     #
+# Population-based COVID-19 surveillance, Maputo, Moz, Dec2020-Mar2022      #
+# Active acute respiratory illness surveillance                             #
+# Script to estimate (symptomatic) COVID-19 incidence, COVID-19 risk, and   #
+# symptoms associated with COVID-19                                         #
 #############################################################################
 
 # install/load packages
@@ -14,66 +16,11 @@ cases_participants <- read_excel("cases_participants.xlsx")
 confirmedcases_firstonly_participants<- read_excel("confirmedcases_firstonly_participants.xlsx")
 # import all participant data
 participants <- read.csv("participants.csv")
+cases_participantsFU <- read.csv("cases_participantsFU.csv")
 # import household visit data
 FU <- read.csv("FU.csv")
 # import geo coordinates of households
 visit_geompoints <- read.csv("visit_geompoints.csv")
-
-# combine confirmedcases_firstonly_participants and FU
-# add the time under follow-up to make a denominator person-months
-FUbyHH <- FU %>% group_by(locationId) %>% summarise(nvisits=n())
-sum(FUbyHH$nvisits)
-cases_participantsFU <- merge(confirmedcases_firstonly_participants, FUbyHH, by.x = "locationid", by.y = "locationId", all.x = T)
-cases_participantsFU$time <- cases_participantsFU$nvisits/2 # number of person-months followed up
-# STILL HAVE TO REMOVE THE PM AFTER THE EVENT OCCURRED!!
-# remove those participants that haven't been followed-up
-cases_participantsFU <- cases_participantsFU %>% filter(!is.na(pm))
-# check and remove duplicated rows 
-dups = which(duplicated(cases_participantsFU%>%select('individualid','testresult')))
-cases_participantsFU <- cases_participantsFU %>% filter(!row.names(cases_participantsFU) %in% dups)
-
-# make factors of explanatory variables
-cases_participantsFU$overweight[!is.na(cases_participantsFU$BMI)] <- "normal"
-cases_participantsFU$overweight[cases_participantsFU$BMI>24.99] <- "overweight"
-cases_participantsFU$overweight[cases_participantsFU$BMI>29.99] <- "obesity"
-cases_participantsFU$overweight[cases_participantsFU$BMI<19] <- "underweight"
-cases_participantsFU$overweight <- factor(cases_participantsFU$overweight)
-cases_participantsFU$education[cases_participantsFU$ednivel_educacao=="1.  Primario incompleto"] <- "none completed"
-cases_participantsFU$education[cases_participantsFU$ednivel_educacao=="8. Nenhum"] <- "none completed"
-cases_participantsFU$education[cases_participantsFU$ednivel_educacao=="2. Primario completo"] <- "primary"
-cases_participantsFU$education[cases_participantsFU$ednivel_educacao=="7. Pos-graduacao"] <- "higher"
-cases_participantsFU$education[cases_participantsFU$ednivel_educacao=="6. Superior"] <- "higher"
-cases_participantsFU$education[cases_participantsFU$ednivel_educacao=="5. Tecnico-profissional"] <- "higher"
-cases_participantsFU$education[grepl("cundario incom", cases_participantsFU$ednivel_educacao)==T] <- "primary"
-cases_participantsFU$education[cases_participantsFU$ednivel_educacao=="4. Secundario completo"] <- "secondary"
-cases_participantsFU$education <- factor(cases_participantsFU$education)
-cases_participantsFU$hypertensionbin[cases_participantsFU$hypertension=="Não diagnosticado "] <- 0
-cases_participantsFU$hypertensionbin[cases_participantsFU$hypertension=="Diagnostico previo ou evento mas Não acompanhado"] <- 1
-cases_participantsFU$hypertensionbin[cases_participantsFU$hypertension=="Diagnosticado, em seguimento mas SEM tratamento especifico"] <- 1
-cases_participantsFU$hypertensionbin[cases_participantsFU$hypertension=="Diagnosticado, em acompanhamento com tratamento especifico"] <- 1
-cases_participantsFU$diabetesbin[cases_participantsFU$diabet=="Não diagnosticado"] <- 0
-cases_participantsFU$diabetesbin[cases_participantsFU$diabet=="Diagnosticado, em acompanhamento com tratamento especifico"] <- 1
-cases_participantsFU$lowestSES[!is.na(cases_participantsFU$SesScoreQnt=="1. very low")] <- 0
-cases_participantsFU$lowestSES[cases_participantsFU$SesScoreQnt=="1. very low"] <- 1
-cases_participantsFU$hivbin[cases_participantsFU$hiv=="Crianca exposta"] <- 1
-cases_participantsFU$hivbin[cases_participantsFU$hiv=="Seropositivo e em tratamento anti-retroviral"] <- 1
-cases_participantsFU$hivbin[cases_participantsFU$hiv=="estado desconhecido"] <- 0
-cases_participantsFU$hivbin[cases_participantsFU$hiv=="HIV negativo (no momento do ultimo teste HIV)"] <- 0
-cases_participantsFU$agegr <- factor(cases_participantsFU$agegr)
-cases_participantsFU$sex <- factor(cases_participantsFU$GENDER)
-
-# change category to use as reference
-cases_participantsFU <- cases_participantsFU %>% 
-  mutate(agegr = fct_relevel(agegr, "0-17", after = 0)) 
-cases_participantsFU <- cases_participantsFU %>% 
-  mutate(sex = fct_relevel(sex, "M", after = 0)) 
-
-# smaller age groups
-breaks <- c(seq(0, 60, by = 10), 70, Inf)
-# Create factor variable 'agegr'
-cases_participantsFU$agegr10 <- cut(cases_participantsFU$age, breaks = breaks, labels = c("0-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70+"), right = FALSE)
-cases_participantsFU$agegr10 <- factor(cases_participantsFU$agegr10)
-table(cases_participantsFU$agegr10)
 
 #### 1. HOUSEHOLD VISITS & EPICURVE ####
 # number of visits
@@ -218,6 +165,10 @@ round(prop.table(table(cases_participantsFU$SesScoreQnt))*100,1)
 table(cases_participantsFU$education, useNA = "always")
 round(prop.table(table(cases_participantsFU$education))*100,1)
 6190-1349
+
+# number of individuals with at least one episode
+individualswithepisode <- possiblecases %>% group_by(individualid) %>% summarise(n())
+count(individualswithepisode)
 
 # mark which participant had symptoms, and which tested covid +
 possiblecases$confirmed <- 0
@@ -409,12 +360,6 @@ ggsave(plot = scatterCTage,"scatterCTage.jpg", width = 5, height = 10, dpi = 300
 
 #### 6. FACTORS ASSOCIATED WITH COVID-19 ####
 # dataframe confirmedcases_firstonly_participants has baseline and demographic data of all participants, plus indicated those who were COVID-19 positive
-# generate a variable 'event' so say who had the event
-cases_participantsFU$event <- 0
-cases_participantsFU$event[cases_participantsFU$testresult=="positive"] <- 1
-cases_participantsFU$eventf <- factor(cases_participantsFU$event)
-table(cases_participantsFU$eventf)
-
 # univar table
 age <- cases_participantsFU %>%
   group_by(agegr10) %>%
@@ -424,13 +369,13 @@ sex <- cases_participantsFU %>%
   summarise(total=n(), pcttotal=(round(n()/count(cases_participantsFU)*100,1)), covid19=sum(event), pctcases=round(sum(event)/sum(cases_participantsFU$event)*100,1))
 table(cases_participantsFU$lowestSES, useNA = "always")
 SES <- cases_participantsFU %>%
-  filter(!is.na(lowestSES)) %>%
-  group_by(lowestSES) %>%
+  filter(!is.na(SesScoreQnt)) %>%
+  group_by(SesScoreQnt) %>%
   summarise(
     total = n(),
-    pcttotal = (n() / sum(!is.na(cases_participantsFU$lowestSES))) * 100,
+    pcttotal = round((n() / sum(!is.na(cases_participantsFU$SesScoreQnt)))*100,1),
     covid19 = sum(event),
-    pctcases = (sum(event) / sum(cases_participantsFU$event[!is.na(cases_participantsFU$lowestSES)])) * 100
+    pctcases = round((sum(event) / sum(cases_participantsFU$event[!is.na(cases_participantsFU$SesScoreQnt)]))*100,1)
   )
 education <- cases_participantsFU %>%
   filter(!is.na(education)) %>%
@@ -441,9 +386,190 @@ education <- cases_participantsFU %>%
     covid19 = sum(event),
     pctcases = (sum(event) / sum(cases_participantsFU$event[!is.na(cases_participantsFU$education)])) * 100
   )
+hiv <- cases_participantsFU %>%
+  filter(!is.na(hivbin)) %>%
+  group_by(hivbin) %>%
+  summarise(
+    total = n(),
+    pcttotal = (n() / sum(!is.na(cases_participantsFU$hivbin))) * 100,
+    covid19 = sum(event),
+    pctcases = (sum(event) / sum(cases_participantsFU$event[!is.na(cases_participantsFU$hivbin)])) * 100
+  )
+hypertension <- cases_participantsFU %>%
+  filter(!is.na(hypertensionbin)) %>%
+  group_by(hypertensionbin) %>%
+  summarise(
+    total = n(),
+    pcttotal = (n() / sum(!is.na(cases_participantsFU$hypertensionbin))) * 100,
+    covid19 = sum(event),
+    pctcases = (sum(event) / sum(cases_participantsFU$event[!is.na(cases_participantsFU$hypertensionbin)])) * 100
+  )
+diabetes <- cases_participantsFU %>%
+  filter(!is.na(diabetesbin)) %>%
+  group_by(diabetesbin) %>%
+  summarise(
+    total = n(),
+    pcttotal = (n() / sum(!is.na(cases_participantsFU$diabetesbin))) * 100,
+    covid19 = sum(event),
+    pctcases = (sum(event) / sum(cases_participantsFU$event[!is.na(cases_participantsFU$diabetesbin)])) * 100
+  )
+overweight <- cases_participantsFU %>%
+  filter(!is.na(overweight)) %>%
+  group_by(overweight) %>%
+  summarise(
+    total = n(),
+    pcttotal = (n() / sum(!is.na(cases_participantsFU$overweight))) * 100,
+    covid19 = sum(event),
+    pctcases = (sum(event) / sum(cases_participantsFU$event[!is.na(cases_participantsFU$overweight)])) * 100
+  )
+
+publictransport_pastweek <- cases_participantsFU %>%
+  filter(!is.na(publictransport_pastweek)) %>%
+  group_by(publictransport_pastweek) %>%
+  summarise(
+    total = n(),
+    pcttotal = (n() / sum(!is.na(cases_participantsFU$publictransport_pastweek))) * 100,
+    covid19 = sum(event),
+    pctcases = (sum(event) / sum(cases_participantsFU$event[!is.na(cases_participantsFU$publictransport_pastweek)])) * 100
+  )
+
+smokingbin <- cases_participantsFU %>%
+  filter(!is.na(smokingbin)) %>%
+  group_by(smokingbin) %>%
+  summarise(
+    total = n(),
+    pcttotal = (n() / sum(!is.na(cases_participantsFU$smokingbin))) * 100,
+    covid19 = sum(event),
+    pctcases = (sum(event) / sum(cases_participantsFU$event[!is.na(cases_participantsFU$smokingbin)])) * 100
+  )
+pregnant <- cases_participantsFU %>%
+  filter(!is.na(pregnant)) %>%
+  group_by(pregnant) %>%
+  summarise(
+    total = n(),
+    pcttotal = (n() / sum(!is.na(cases_participantsFU$pregnant))) * 100,
+    covid19 = sum(event),
+    pctcases = (sum(event) / sum(cases_participantsFU$event[!is.na(cases_participantsFU$pregnant)])) * 100
+  )
+tb <- cases_participantsFU %>%
+  filter(!is.na(tbbin)) %>%
+  group_by(tbbin) %>%
+  summarise(
+    total = n(),
+    pcttotal = (n() / sum(!is.na(cases_participantsFU$tbbin))) * 100,
+    covid19 = sum(event),
+    pctcases = (sum(event) / sum(cases_participantsFU$event[!is.na(cases_participantsFU$tbbin)])) * 100
+  )
+lungdisease <- cases_participantsFU %>%
+  filter(!is.na(lungdisease)) %>%
+  group_by(lungdisease) %>%
+  summarise(
+    total = n(),
+    pcttotal = (n() / sum(!is.na(cases_participantsFU$lungdisease))) * 100,
+    covid19 = sum(event),
+    pctcases = (sum(event) / sum(cases_participantsFU$event[!is.na(cases_participantsFU$lungdisease)])) * 100
+  )
+heart <- cases_participantsFU %>%
+  filter(!is.na(heart)) %>%
+  group_by(heart) %>%
+  summarise(
+    total = n(),
+    pcttotal = (n() / sum(!is.na(cases_participantsFU$heart))) * 100,
+    covid19 = sum(event),
+    pctcases = (sum(event) / sum(cases_participantsFU$event[!is.na(cases_participantsFU$heart)])) * 100
+  )
+health_worker <- cases_participantsFU %>%
+  filter(!is.na(health_worker)) %>%
+  group_by(health_worker) %>%
+  summarise(
+    total = n(),
+    pcttotal = (n() / sum(!is.na(cases_participantsFU$health_worker))) * 100,
+    covid19 = sum(event),
+    pctcases = (sum(event) / sum(cases_participantsFU$event[!is.na(cases_participantsFU$health_worker)])) * 100
+  )
+bedroom_sharing <- cases_participantsFU %>%
+  filter(!is.na(bedroom_sharing)) %>%
+  group_by(bedroom_sharing) %>%
+  summarise(
+    total = n(),
+    pcttotal = (n() / sum(!is.na(cases_participantsFU$bedroom_sharing))) * 100,
+    covid19 = sum(event),
+    pctcases = (sum(event) / sum(cases_participantsFU$event[!is.na(cases_participantsFU$bedroom_sharing)])) * 100
+  )
+toylet_sharing <- cases_participantsFU %>%
+  filter(!is.na(toylet_sharing)) %>%
+  group_by(toylet_sharing) %>%
+  summarise(
+    total = n(),
+    pcttotal = (n() / sum(!is.na(cases_participantsFU$toylet_sharing))) * 100,
+    covid19 = sum(event),
+    pctcases = (sum(event) / sum(cases_participantsFU$event[!is.na(cases_participantsFU$toylet_sharing)])) * 100
+  )
+handwash <- cases_participantsFU %>%
+  filter(!is.na(handwash)) %>%
+  group_by(handwash) %>%
+  summarise(
+    total = n(),
+    pcttotal = (n() / sum(!is.na(cases_participantsFU$handwash))) * 100,
+    covid19 = sum(event),
+    pctcases = (sum(event) / sum(cases_participantsFU$event[!is.na(cases_participantsFU$handwash)])) * 100
+  )
+water_availability <- cases_participantsFU %>%
+  filter(!is.na(water_availability)) %>%
+  group_by(water_availability) %>%
+  summarise(
+    total = n(),
+    pcttotal = (n() / sum(!is.na(cases_participantsFU$water_availability))) * 100,
+    covid19 = sum(event),
+    pctcases = (sum(event) / sum(cases_participantsFU$event[!is.na(cases_participantsFU$water_availability)])) * 100
+  )
+soap_availability <- cases_participantsFU %>%
+  filter(!is.na(soap_availability)) %>%
+  group_by(soap_availability) %>%
+  summarise(
+    total = n(),
+    pcttotal = (n() / sum(!is.na(cases_participantsFU$soap_availability))) * 100,
+    covid19 = sum(event),
+    pctcases = (sum(event) / sum(cases_participantsFU$event[!is.na(cases_participantsFU$soap_availability)])) * 100
+  )
+
+
 # cox regression calculating hazard ratios
-# Fit Cox regression models for each variable
-explanatory_variables <- c("agegr10", "education", "overweight", "lowestSES", "hivbin", "hypertensionbin", "diabetesbin")
+# sex and age
+# Fit the Cox regression model
+cox_model <- coxph(Surv(time, event) ~ age + sex + SesScoreQnt, data = cases_participantsFU)
+
+# Extract hazard ratios and confidence intervals
+hazard_ratios <- exp(coef(cox_model))
+conf_intervals <- exp(confint(cox_model))
+rounded_hazard_ratios <- round(hazard_ratios, 2)
+rounded_conf_intervals <- round(conf_intervals, 2)
+
+# Combine hazard ratios and confidence intervals into a data frame
+sexageresult <- data.frame(Hazard_Ratio = rounded_hazard_ratios,
+                           CI_Lower = rounded_conf_intervals[, 1],
+                           CI_Upper = rounded_conf_intervals[, 2])
+print(sexageresult)
+
+# with age groups
+# Fit the Cox regression model with agegr10 as a categorical variable - SesScoreQnt taken out for 
+cox_model <- coxph(Surv(time, event) ~ agegr10 + sex, data = cases_participantsFU)
+
+# Extract hazard ratios and confidence intervals
+hazard_ratios <- exp(coef(cox_model))
+conf_intervals <- exp(confint(cox_model))
+rounded_hazard_ratios <- round(hazard_ratios, 2)
+rounded_conf_intervals <- round(conf_intervals, 2)
+
+# Combine hazard ratios and confidence intervals into a data frame
+sexagegrresult <- data.frame(Hazard_Ratio = rounded_hazard_ratios,
+                             CI_Lower = rounded_conf_intervals[, 1],
+                             CI_Upper = rounded_conf_intervals[, 2])
+print(sexagegrresult)
+
+# fit model for each variable, adjusting for age and sex
+explanatory_variables <- c("education", "lowestSES", "SesScoreQnt", "smokingbin", "publictransport_pastweek", 
+                           "bedroom_sharing", "toylet_sharing", "handwash", "water_availability", "soap_availability", "health_worker")
 
 for (variable in explanatory_variables) {
   # Create a formula including the variable, age, and sex
@@ -453,8 +579,30 @@ for (variable in explanatory_variables) {
   cox_model <- coxph(formula, data = cases_participantsFU)
   
   # Extract hazard ratios and their confidence intervals
-  hr_ci <- exp(coef(cox_model))
-  ci <- exp(confint(cox_model))
+  hr_ci <- round(exp(coef(cox_model)),2)
+  ci <- round(exp(confint(cox_model)),2)
+  
+  # Print the results
+  cat("Variable:", variable, "\n")
+  cat("Hazard Ratios:\n")
+  print(hr_ci)
+  cat("Confidence Intervals:\n")
+  print(ci)
+  cat("\n")
+}
+# comorbidities "hivbin", "tbbin", "hypertensionbin", "diabetesbin", "heart", "lungdisease", "pregnant"
+explanatory_variables <- c("hivbin", "tbbin", "hypertensionbin", "diabetesbin", "heart", "lungdisease", "leukemia", "pregnant")
+
+for (variable in explanatory_variables) {
+  # Create a formula including the variable, age, and sex
+  formula <- as.formula(paste("Surv(time, event) ~ ", variable, "+ age + sex"))
+  
+  # Fit the Cox regression model
+  cox_model <- coxph(formula, data = cases_participantsFU)
+  
+  # Extract hazard ratios and their confidence intervals
+  hr_ci <- round(exp(coef(cox_model)),2)
+  ci <- round(exp(confint(cox_model)),2)
   
   # Print the results
   cat("Variable:", variable, "\n")
@@ -465,18 +613,211 @@ for (variable in explanatory_variables) {
   cat("\n")
 }
 
+# BMI
+# filter out children
+cases_participantsFU_ad <- cases_participantsFU %>% filter(age>15.99)
+# Fit the Cox regression model
+cox_model <- coxph(Surv(time, event) ~ age + sex + overweight, data = cases_participantsFU_ad)
 
-#### 5. SYMPTOMS ASSOCIATED WITH COVID-19 AMONG ARI CASES ####
+# Extract hazard ratios and confidence intervals
+hazard_ratios <- exp(coef(cox_model))
+conf_intervals <- exp(confint(cox_model))
+rounded_hazard_ratios <- round(hazard_ratios, 2)
+rounded_conf_intervals <- round(conf_intervals, 2)
+
+# Combine hazard ratios and confidence intervals into a data frame
+overweightresult <- data.frame(Hazard_Ratio = rounded_hazard_ratios,
+                           CI_Lower = rounded_conf_intervals[, 1],
+                           CI_Upper = rounded_conf_intervals[, 2])
+print(overweightresult)
+
+# SES
+# Change the factor level and set "3. med." as the reference level
+cases_participantsFU <- cases_participantsFU %>%
+  mutate(SesScoreQnt = relevel(SesScoreQnt, ref = "3. med."))
+# Fit the Cox regression model
+cox_model <- coxph(Surv(time, event) ~ age + sex + SesScoreQnt, data = cases_participantsFU)
+# Extract hazard ratios and confidence intervals
+hazard_ratios <- exp(coef(cox_model))
+conf_intervals <- exp(confint(cox_model))
+rounded_hazard_ratios <- round(hazard_ratios, 2)
+rounded_conf_intervals <- round(conf_intervals, 2)
+
+# Combine hazard ratios and confidence intervals into a data frame
+SES <- data.frame(Hazard_Ratio = rounded_hazard_ratios,
+                               CI_Lower = rounded_conf_intervals[, 1],
+                               CI_Upper = rounded_conf_intervals[, 2])
+print(SES)
+
+# lowest SES
+# Change the factor level and set "3. med." as the reference level
+cases_participantsFU <- cases_participantsFU %>%
+  mutate(lowestSES = relevel(lowestSES, ref = 0))
+# Fit the Cox regression model
+cox_model <- coxph(Surv(time, event) ~ age + sex + lowestSES, data = cases_participantsFU)
+# Extract hazard ratios and confidence intervals
+hazard_ratios <- exp(coef(cox_model))
+conf_intervals <- exp(confint(cox_model))
+rounded_hazard_ratios <- round(hazard_ratios, 2)
+rounded_conf_intervals <- round(conf_intervals, 2)
+
+# Combine hazard ratios and confidence intervals into a data frame
+SES <- data.frame(Hazard_Ratio = rounded_hazard_ratios,
+                  CI_Lower = rounded_conf_intervals[, 1],
+                  CI_Upper = rounded_conf_intervals[, 2])
+print(SES)
+# education
+# Change the factor level and set "3. med." as the reference level
+cases_participantsFU <- cases_participantsFU %>%
+  mutate(education = relevel(education, ref = "primary"))
+# Fit the Cox regression model
+cox_model <- coxph(Surv(time, event) ~ age + sex + education, data = cases_participantsFU)
+# Extract hazard ratios and confidence intervals
+hazard_ratios <- exp(coef(cox_model))
+conf_intervals <- exp(confint(cox_model))
+rounded_hazard_ratios <- round(hazard_ratios, 2)
+rounded_conf_intervals <- round(conf_intervals, 2)
+
+# Combine hazard ratios and confidence intervals into a data frame
+education <- data.frame(Hazard_Ratio = rounded_hazard_ratios,
+                  CI_Lower = rounded_conf_intervals[, 1],
+                  CI_Upper = rounded_conf_intervals[, 2])
+print(education)
+
+# public transport  
+cases_participantsFU_nosharedtaxi <- cases_participantsFU %>% filter(publictransport_pastweek!="moto taxi/shared taxi")
+# Change the factor level and set "3. med." as the reference level
+cases_participantsFU <- cases_participantsFU %>%
+  mutate(publictransport_pastweek = relevel(publictransport_pastweek, ref = "none"))
+# Fit the Cox regression model
+cox_model <- coxph(Surv(time, event) ~ age + sex + publictransport_pastweek, data = cases_participantsFU)
+# Extract hazard ratios and confidence intervals
+hazard_ratios <- exp(coef(cox_model))
+conf_intervals <- exp(confint(cox_model))
+rounded_hazard_ratios <- round(hazard_ratios, 2)
+rounded_conf_intervals <- round(conf_intervals, 2)
+
+# Combine hazard ratios and confidence intervals into a data frame
+publictransport_pastweek <- data.frame(Hazard_Ratio = rounded_hazard_ratios,
+                        CI_Lower = rounded_conf_intervals[, 1],
+                        CI_Upper = rounded_conf_intervals[, 2])
+print(publictransport_pastweek)
+
+
+#### 7. INCIDENCE OF (symptomatic) COVID-19 ####
+# we estimate the incidence of COVID-19 and of respiratory symptom episodes (=possible case) per person-year active surveillance, then monthly, then by age group
+# 7.1 yearly COVID-19 incidence rate all ages
+sum(cases_participantsFU$event)
+sum(cases_participantsFU$time)
+personyears_followedup <- sum(cases_participantsFU$time)/12
+personyears_followedup
+# n events per 1000 inhabitants per month
+sum(cases_participantsFU$event)/sum(cases_participantsFU$time)
+# n events per 1000 inhabitants per year
+yearlyincidencerate <- sum(cases_participantsFU$event)/sum(cases_participantsFU$time)*12
+yearlyincidencerate
+# 95%CI
+standard_error <- sqrt(yearlyincidencerate * (1 - yearlyincidencerate) / personyears_followedup)
+z <- qnorm(0.975)  # 0.975 corresponds to (1 - 0.05/2) for a two-tailed test
+margin_of_error <- z * standard_error
+lower_bound <- yearlyincidencerate - margin_of_error
+upper_bound <- yearlyincidencerate + margin_of_error
+lower_bound
+upper_bound
+
+# 7.2 yearly respiratory illness incidence rate all ages
+nrow(possiblecases)
+# n events per 1000 inhabitants per year
+yearlyARIincidencerate <- nrow(possiblecases)/sum(cases_participantsFU$time)*12
+yearlyARIincidencerate
+# 95%CI
+standard_error <- sqrt(yearlyARIincidencerate * (1 - yearlyARIincidencerate) / personyears_followedup)
+z <- qnorm(0.975)  # 0.975 corresponds to (1 - 0.05/2) for a two-tailed test
+margin_of_error <- z * standard_error
+lower_bound <- yearlyARIincidencerate - margin_of_error
+upper_bound <- yearlyARIincidencerate + margin_of_error
+lower_bound
+upper_bound
+
+
+# 7.2 yearly incidence rate by age group
+table(cases_participantsFU$agegr, useNA = "always")
+# under 18
+cases_participantsFU_u18 <- cases_participantsFU %>% filter(agegr=="0-17")
+# personyears followed up
+personyears_followedup_u18 <- sum(cases_participantsFU_u18$time)/12
+personyears_followedup_u18
+# n events per 1000 inhabitants per year
+yearlyincidencerate_u18 <- sum(cases_participantsFU_u18$event)/personyears_followedup_u18
+yearlyincidencerate_u18
+# 95%CI
+standard_error <- sqrt(yearlyincidencerate_u18 * (1 - yearlyincidencerate_u18) / personyears_followedup_u18)
+z <- qnorm(0.975)  # 0.975 corresponds to (1 - 0.05/2) for a two-tailed test
+margin_of_error <- z * standard_error
+lower_bound_u18 <- yearlyincidencerate_u18 - margin_of_error
+upper_bound_u18 <- yearlyincidencerate_u18 + margin_of_error
+lower_bound_u18
+upper_bound_u18
+
+# 18-49
+cases_participantsFU_18to49 <- cases_participantsFU %>% filter(agegr=="18-49")
+# personyears followed up
+personyears_followedup_18to49 <- sum(cases_participantsFU_18to49$time)/12
+personyears_followedup_18to49
+# n events per 1000 inhabitants per year
+yearlyincidencerate_18to49 <- sum(cases_participantsFU_18to49$event)/personyears_followedup_18to49
+yearlyincidencerate_18to49
+# 95%CI
+standard_error <- sqrt(yearlyincidencerate_18to49 * (1 - yearlyincidencerate_18to49) / personyears_followedup_18to49)
+z <- qnorm(0.975)  # 0.975 corresponds to (1 - 0.05/2) for a two-tailed test
+margin_of_error <- z * standard_error
+lower_bound_18to49 <- yearlyincidencerate_18to49 - margin_of_error
+upper_bound_18to49 <- yearlyincidencerate_18to49 + margin_of_error
+lower_bound_18to49
+upper_bound_18to49
+
+# 50 or more
+cases_participantsFU_over50 <- cases_participantsFU %>% filter(agegr=="50+")
+# personyears followed up
+personyears_followedup_over50 <- sum(cases_participantsFU_over50$time)/12
+personyears_followedup_over50
+# n events per 1000 inhabitants per year
+yearlyincidencerate_over50 <- sum(cases_participantsFU_over50$event)/personyears_followedup_over50
+yearlyincidencerate_over50
+# 95%CI
+standard_error <- sqrt(yearlyincidencerate_over50 * (1 - yearlyincidencerate_over50) / personyears_followedup_over50)
+z <- qnorm(0.975)  # 0.975 corresponds to (1 - 0.05/2) for a two-tailed test
+margin_of_error <- z * standard_error
+lower_bound_over50 <- yearlyincidencerate_over50 - margin_of_error
+upper_bound_over50 <- yearlyincidencerate_over50 + margin_of_error
+lower_bound_over50
+upper_bound_over50
+
+#### 8. SYMPTOMS ASSOCIATED WITH COVID-19 AMONG ARI CASES ####
 # subset database to keep only those with results
-testedpossiblecases <- cases_participants %>% filter(testresult=="positive" | testresult=="negative")
+testedpossiblecases <- possiblecases %>% filter(testresult=="positive" | testresult=="negative")
+
+# add age
+demographics <- read.csv("C:/Users/bingelbeen/OneDrive - ITG/nCoV2019/AfriCoVER/africover git/demographics.txt", sep="")
+testedpossiblecases <- merge(testedpossiblecases, demographics, by.x = "individualid", by.y = "openhdsindividualId", all.x = T)
+testedpossiblecases$age <- round((as.numeric(as.Date("2021-06-15")) - as.numeric(as.Date(testedpossiblecases$dob)))/365.25,0)
+testedpossiblecases$age[testedpossiblecases$age<0] <- 0
+# Create factor variable 'agegr'
+testedpossiblecases$agegr10 <- cut(testedpossiblecases$age, breaks = breaks, labels = c("0-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70+"), right = FALSE)
+testedpossiblecases$agegr10 <- factor(testedpossiblecases$agegr10)
+table(testedpossiblecases$agegr10)
 
 # frequencies confirmed
 table(testedpossiblecases$testresult, useNA = "always")
-round(prop.table(table(testedpossiblecases$testresult))*100,2)
+round(prop.table(table(testedpossiblecases$testresult))*100,1)
 
-# results by age
-table(testedpossiblecases$agegr, testedpossiblecases$testresult,useNA = "always")
-round(prop.table(table(testedpossiblecases$agegr, testedpossiblecases$testresult),2)*100,1) # missings not included now
+# age confirmed vs negative
+testedpossiblecases %>%
+  filter(!is.na(age)) %>%
+  group_by(testresult) %>%
+  summarise(median=median(age),q25=quantile(age,0.25), q75=quantile(age,0.75))
+table(testedpossiblecases$agegr10, testedpossiblecases$testresult,useNA = "always")
+round(prop.table(table(testedpossiblecases$agegr10, testedpossiblecases$testresult),2)*100,1) # missings not included now
 
 # results by sex
 table(testedpossiblecases$GENDER, testedpossiblecases$testresult,useNA = "always")
@@ -494,10 +835,10 @@ table(testedpossiblecases$dyspnoea, testedpossiblecases$testresult, useNA = "alw
 round(prop.table(table(testedpossiblecases$dyspnoea, testedpossiblecases$testresult),2)*100,1) 
 # anosmia
 table(testedpossiblecases$anosmia, testedpossiblecases$testresult, useNA = "always")
-round(prop.table(table(testedpossiblecases$anosmia, testedpossiblecases$testresult),2)*100,2) 
+round(prop.table(table(testedpossiblecases$anosmia, testedpossiblecases$testresult),2)*100,1) 
 # ageusia
 table(testedpossiblecases$ageusia, testedpossiblecases$testresult, useNA = "always")
-round(prop.table(table(testedpossiblecases$ageusia, testedpossiblecases$testresult),2)*100,) 
+round(prop.table(table(testedpossiblecases$ageusia, testedpossiblecases$testresult),2)*100,1) 
 # fatigue
 table(testedpossiblecases$fatigue, testedpossiblecases$testresult, useNA = "always")
 round(prop.table(table(testedpossiblecases$fatigue, testedpossiblecases$testresult),2)*100,1) 
@@ -511,22 +852,55 @@ testedpossiblecases$O2under95[testedpossiblecases$oxygen_saturation<95] <- "yes"
 testedpossiblecases$O2under95[testedpossiblecases$oxygen_saturation>94.9999999] <- "no"
 table(testedpossiblecases$O2under95, testedpossiblecases$testresult, useNA = "always")
 round(prop.table(table(testedpossiblecases$O2under95, testedpossiblecases$testresult),2)*100,1) 
-
-# HIV
-table(testedpossiblecases$hiv, testedpossiblecases$testresult, useNA = "always")
-round(prop.table(table(testedpossiblecases$hiv, testedpossiblecases$testresult),2)*100,1) 
-# hypertension
-table(testedpossiblecases$hypertension, testedpossiblecases$testresult, useNA = "always")
-round(prop.table(table(testedpossiblecases$hypertension, testedpossiblecases$testresult),2)*100,1) 
-# diabetes
-table(testedpossiblecases$diabet, testedpossiblecases$testresult, useNA = "always")
-round(prop.table(table(testedpossiblecases$diabet, testedpossiblecases$testresult),2)*100,1) 
-
-
+# cough
+table(testedpossiblecases$cough, testedpossiblecases$testresult, useNA = "always")
+round(prop.table(table(testedpossiblecases$cough, testedpossiblecases$testresult),2)*100,1) 
+# rhinorrhea
+table(testedpossiblecases$rhinorrhea, testedpossiblecases$testresult, useNA = "always")
+round(prop.table(table(testedpossiblecases$rhinorrhea, testedpossiblecases$testresult),2)*100,1) 
+# chest_pain
+table(testedpossiblecases$chest_pain, testedpossiblecases$testresult, useNA = "always")
+round(prop.table(table(testedpossiblecases$chest_pain, testedpossiblecases$testresult),2)*100,1) 
+# nausea
+table(testedpossiblecases$nausea, testedpossiblecases$testresult, useNA = "always")
+round(prop.table(table(testedpossiblecases$nausea, testedpossiblecases$testresult),2)*100,1) 
+# headache
+table(testedpossiblecases$headache, testedpossiblecases$testresult, useNA = "always")
+round(prop.table(table(testedpossiblecases$headache, testedpossiblecases$testresult),2)*100,1) 
+# vomit
+table(testedpossiblecases$vomit, testedpossiblecases$testresult, useNA = "always")
+round(prop.table(table(testedpossiblecases$vomit, testedpossiblecases$testresult),2)*100,1) 
+# appitite_loss
+table(testedpossiblecases$appitite_loss, testedpossiblecases$testresult, useNA = "always")
+round(prop.table(table(testedpossiblecases$appitite_loss, testedpossiblecases$testresult),2)*100,1) 
+# diarrheoa
+table(testedpossiblecases$diarrhea, testedpossiblecases$testresult, useNA = "always")
+round(prop.table(table(testedpossiblecases$diarrhea, testedpossiblecases$testresult),2)*100,1) 
+# nosebleed
+table(testedpossiblecases$nosebleed, testedpossiblecases$testresult, useNA = "always")
+round(prop.table(table(testedpossiblecases$nosebleed, testedpossiblecases$testresult),2)*100,1) 
+# consciousness_change
+table(testedpossiblecases$consciousness_change, testedpossiblecases$testresult, useNA = "always")
+round(prop.table(table(testedpossiblecases$consciousness_change, testedpossiblecases$testresult),2)*100,1) 
+# convulsions
+table(testedpossiblecases$convulsions, testedpossiblecases$testresult, useNA = "always")
+round(prop.table(table(testedpossiblecases$convulsions, testedpossiblecases$testresult),2)*100,1) 
+# chills
+table(testedpossiblecases$chills, testedpossiblecases$testresult, useNA = "always")
+round(prop.table(table(testedpossiblecases$chills, testedpossiblecases$testresult),2)*100,1) 
+# myalgia
+table(testedpossiblecases$myalgia, testedpossiblecases$testresult, useNA = "always")
+round(prop.table(table(testedpossiblecases$myalgia, testedpossiblecases$testresult),2)*100,1) 
+# arthromyalgia
+table(testedpossiblecases$arthromyalgia, testedpossiblecases$testresult, useNA = "always")
+round(prop.table(table(testedpossiblecases$arthromyalgia, testedpossiblecases$testresult),2)*100,1) 
+# rash
+table(testedpossiblecases$rash, testedpossiblecases$testresult, useNA = "always")
+round(prop.table(table(testedpossiblecases$rash, testedpossiblecases$testresult),2)*100,1) 
 
 # multivar to be able to control for age
 # define variables of interest 
-explanatory_vars <- c("fever", "throat", "rhinorrhea", "dyspnoea", "cough", "chest_pain", "vomit", "chills", "nausea", "diarrhea", "headache", "rash", "conjunctivitis", "myalgia", "arthromyalgia", "anosmia", "ageusia", "fatigue", "O2under95")
+explanatory_vars <- c("fever", "throat", "rhinorrhea", "dyspnoea", "cough", "chest_pain", "vomit", "chills", "appitite_loss", "nausea", "diarrhea", "headache", "rash", "conjunctivitis", "myalgia", "arthromyalgia", "anosmia", "ageusia", "fatigue", "O2under95")
 # convert dichotomous variables to 0/1 
 testedpossiblecases <- testedpossiblecases %>%  
   mutate(across(                                      
@@ -551,22 +925,22 @@ testedpossiblecases <- testedpossiblecases %>%
 # one by one symptom, adjusted for age group
 # define which age group to make reference
 testedpossiblecases <- testedpossiblecases %>% 
-  mutate(agegr = fct_relevel(agegr, "18-49", after = 0)) 
+  mutate(agegr = fct_relevel(agegr10, "0-9", after = 0)) 
 # agegroups
-table(testedpossiblecases$agegr, testedpossiblecases$testresult)
-prop.table(table(testedpossiblecases$agegr, testedpossiblecases$testresult),2)
+table(testedpossiblecases$agegr10, testedpossiblecases$testresult)
+prop.table(table(testedpossiblecases$agegr10, testedpossiblecases$testresult),2)
 
-glm(testresult ~ agegr, family = "poisson", data = testedpossiblecases) %>% summary()
-
-glm(testresult ~ agegr, family = "poisson", data = testedpossiblecases) %>% 
+glm(testresult ~ agegr10, family = "binomial", data = testedpossiblecases) %>% 
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
 # sex
 testedpossiblecases <- testedpossiblecases %>% 
   mutate(GENDER = fct_relevel(GENDER, "M", after = 0)) 
-
-glm(testresult ~ GENDER + agegr, family = "poisson", data = testedpossiblecases) %>% 
+glm(testresult ~ GENDER, family = "binomial", data = testedpossiblecases) %>% 
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+glm(testresult ~ GENDER + age, family = "binomial", data = testedpossiblecases) %>% 
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
@@ -576,146 +950,226 @@ testedpossiblecases$lowestSES <- 0
 testedpossiblecases$lowestSES[testedpossiblecases$SesScoreQnt.y=="1. very low"] <- 1
 table(testedpossiblecases$lowestSES, testedpossiblecases$testresult)
 round(prop.table(table(testedpossiblecases$lowestSES, testedpossiblecases$testresult),2)*100,1)
-glm(testresult ~ lowestSES + agegr, family = "poisson", data = testedpossiblecases) %>% 
+glm(testresult ~ lowestSES + age, family = "binomial", data = testedpossiblecases) %>% 
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
 # fever
 table(testedpossiblecases$fever, testedpossiblecases$testresult)
 prop.table(table(testedpossiblecases$fever, testedpossiblecases$testresult),2)
+glm(testresult ~ fever, family = "binomial", data = testedpossiblecases) %>% 
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ fever + agegr, family = "poisson", data = testedpossiblecases) %>% 
+glm(testresult ~ fever + age, family = "binomial", data = testedpossiblecases) %>% 
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
 # throat
-glm(testresult ~ throat+ agegr, family = "poisson", data = testedpossiblecases) %>%    
+glm(testresult ~ throat, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ rhinorrhea + agegr, family = "poisson", data = testedpossiblecases) %>%    
+glm(testresult ~ throat+ age, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ dyspnoea + agegr, family = "poisson", data = testedpossiblecases) %>%    
+glm(testresult ~ rhinorrhea, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ cough + agegr, family = "poisson", data = testedpossiblecases) %>%    
+glm(testresult ~ rhinorrhea + age, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ chest_pain + agegr, family = "poisson", data = testedpossiblecases) %>%    
+glm(testresult ~ dyspnoea, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ vomit + agegr, family = "poisson", data = testedpossiblecases) %>%    
+glm(testresult ~ dyspnoea + age, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ anosmia + agegr, family = "poisson", data = testedpossiblecases) %>%    
+glm(testresult ~ cough, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ ageusia + agegr, family = "poisson", data = testedpossiblecases) %>%    
+glm(testresult ~ cough + age, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ chills + agegr, family = "poisson", data = testedpossiblecases) %>%    
+glm(testresult ~ chest_pain, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ nausea + agegr, family = "poisson", data = testedpossiblecases) %>%    
+glm(testresult ~ chest_pain + age, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ diarrhea + agegr, family = "poisson", data = testedpossiblecases) %>%    
+glm(testresult ~ vomit, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ arthromyalgia + agegr, family = "poisson", data = testedpossiblecases) %>%    
+glm(testresult ~ vomit + age, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ myalgia + agegr, family = "poisson", data = testedpossiblecases) %>%    
+glm(testresult ~ anosmia, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ fatigue + agegr, family = "poisson", data = testedpossiblecases) %>%    
+glm(testresult ~ anosmia + age, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ O2under95 + agegr, family = "poisson", data = testedpossiblecases) %>%    
+glm(testresult ~ ageusia, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-# HIV
-# among possible cases
-table(cases_participants$hiv)
-prop.table(table(cases_participants$hiv))
-
-# among confirmed cases
-table(cases_participants$hiv[cases_participants$testresult=="positive"])
-prop.table(table(cases_participants$hiv[cases_participants$testresult=="positive"]))
-
-# adjusting for age
-testedpossiblecases$hivbin[testedpossiblecases$hiv=="Crianca exposta"] <- 1
-testedpossiblecases$hivbin[testedpossiblecases$hiv=="Seropositivo e em tratamento anti-retroviral"] <- 1
-testedpossiblecases$hivbin[testedpossiblecases$hiv=="estado desconhecido"] <- 0
-testedpossiblecases$hivbin[testedpossiblecases$hiv=="HIV negativo (no momento do ultimo teste HIV)"] <- 0
-
-glm(testresult ~ hivbin + agegr, family = "poisson", data = testedpossiblecases) %>%    
+glm(testresult ~ ageusia + age, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-# hypertension
-# adjusting for age
-testedpossiblecases$hypertensionbin[testedpossiblecases$hypertension=="Não diagnosticado "] <- 0
-testedpossiblecases$hypertensionbin[testedpossiblecases$hypertension=="Diagnostico previo ou evento mas Não acompanhado"] <- 1
-testedpossiblecases$hypertensionbin[testedpossiblecases$hypertension=="Diagnosticado, em seguimento mas SEM tratamento especifico"] <- 1
-testedpossiblecases$hypertensionbin[testedpossiblecases$hypertension=="Diagnosticado, em acompanhamento com tratamento especifico"] <- 1
-table(testedpossiblecases$hypertension, testedpossiblecases$hypertensionbin)
-glm(testresult ~ hypertensionbin + agegr, family = "poisson", data = testedpossiblecases) %>%    
+glm(testresult ~ chills, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-# diabetes
-# adjusting for age
-testedpossiblecases$diabetesbin[testedpossiblecases$diabet=="Não diagnosticado"] <- 0
-testedpossiblecases$diabetesbin[testedpossiblecases$diabet=="Diagnosticado, em acompanhamento com tratamento especifico"] <- 1
-table(testedpossiblecases$diabet, testedpossiblecases$diabetesbin)
-glm(testresult ~ diabetesbin + agegr, family = "poisson", data = testedpossiblecases) %>%    
+glm(testresult ~ chills + age, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-
-# wealth
-# among all participants
-table(participants$SesScoreQnt)
-prop.table(table(participants$SesScoreQnt))
-
-# among confirmed cases
-table(cases_participants$SesScoreQnt)
-prop.table(table(cases_participants$SesScoreQnt[cases_participants$testresult=="positive"]))
-
-# adjusting for age
-
-glm(testresult ~ SesScoreQnt + agegr, family = "poisson", data = testedpossiblecases) %>%    
+glm(testresult ~ nausea , family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-# education level
-# among all participants
-table(participants$ednivel_educacao)
-prop.table(table(participants$ednivel_educacao))
+glm(testresult ~ nausea + age, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-# among confirmed cases
-table(cases_participants$ednivel_educacao)
-prop.table(table(cases_participants$ednivel_educacao[cases_participants$testresult=="positive"]))
+glm(testresult ~ diarrhea, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
+glm(testresult ~ diarrhea + age, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-#### 6. INCIDENCE OF (symptomatic) COVID-19 ####
-# we will estimate the incidence of symptomatic cases (of all possible cases and of PCR confirmed cases) as number of respiratory disease episodes 
-# (=possible case) per person-year active surveillance -> obtain the denominator (person-years) from F2 -> number of biweekly visits corrected to years
-# then select the possible cases which have been picked up during active surveillance visits
-# Next, we will estimate age-specific incidence (in age groups)
+glm(testresult ~ arthromyalgia, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+glm(testresult ~ arthromyalgia + age, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+glm(testresult ~ myalgia, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+glm(testresult ~ myalgia + age, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+glm(testresult ~ fatigue, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+glm(testresult ~ fatigue + age, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+glm(testresult ~ O2under95, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+glm(testresult ~ O2under95 + age, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+glm(testresult ~ appitite_loss, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+glm(testresult ~ appitite_loss + age, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+glm(testresult ~ rash, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+glm(testresult ~ rash + age, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+glm(testresult ~ headache, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+glm(testresult ~ headache + age, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+glm(testresult ~ nosebleed, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+glm(testresult ~ nosebleed + age, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+# compare the association with anosmia and ageusia during alpha vs. delta vs. omicron peaks
+testedpossiblecases$variant[testedpossiblecases$datacolheita<"2021-06-15"] <- "alpha/beta"
+testedpossiblecases$variant[testedpossiblecases$datacolheita<"2021-11-15"&testedpossiblecases$datacolheita>"2021-06-14"] <- "delta"
+testedpossiblecases$variant[testedpossiblecases$datacolheita>"2021-11-14"] <- "omicron"
+testedpossiblecases$variant <- factor(testedpossiblecases$variant, levels = c("alpha/beta", "delta", "omicron"))
+table(testedpossiblecases$variant, useNA = "always")
+                                                
+glm(testresult ~ anosmia + age + variant, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+glm(testresult ~ ageusia + age + variant, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+# only omicron -> check whether symptoms associated to COVID-19 above remain associated
+testedpossiblecases_omicron <- testedpossiblecases %>% filter(testedpossiblecases$datacolheita>"2021-11-14")
+
+glm(testresult ~ anosmia + age, family = "binomial", data = testedpossiblecases_omicron) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+glm(testresult ~ ageusia + age, family = "binomial", data = testedpossiblecases_omicron) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+glm(testresult ~ appitite_loss + age, family = "binomial", data = testedpossiblecases_omicron) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+glm(testresult ~ chills + age, family = "binomial", data = testedpossiblecases_omicron) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+# before omicron -> check association without omicron cases
+testedpossiblecases_alphabetadelta <- testedpossiblecases %>% filter(testedpossiblecases$datacolheita<"2021-11-15")
+
+glm(testresult ~ anosmia + age, family = "binomial", data = testedpossiblecases_alphabetadelta) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+glm(testresult ~ ageusia + age, family = "binomial", data = testedpossiblecases_alphabetadelta) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+# delta only
+testedpossiblecases_delta <- testedpossiblecases %>% filter(testedpossiblecases$datacolheita<"2021-11-15"&testedpossiblecases$datacolheita>"2021-06-14")
+
+glm(testresult ~ anosmia + age, family = "binomial", data = testedpossiblecases_delta) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+
+glm(testresult ~ ageusia + age, family = "binomial", data = testedpossiblecases_delta) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
