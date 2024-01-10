@@ -27,8 +27,8 @@ Data and sample collection: 15/12/2020 to 31/03/2022 (data completion up to 30/0
 
 # Data
 ## Open data (allowing reproduction of results in https://doi.org/10.1101/2023.12.22.23300474)
-- COVID-19 case data (all participants with acute respiratory illness test results, demographic and baseline participant data)
-- sero-survey data (dried blood spots collected 15 December 2020-31 July 2021 with demographic and baseline participant data)
+- COVID-19 case data (all participants with acute respiratory illness test results, demographic and baseline participant data): to be updated
+- sero-survey data (dried blood spots collected 15 December 2020-31 July 2021 with demographic and baseline participant data): "serosurvey_pseudo.csv"
   
 ## Raw data (available if approved following request to ITMresearchdataaccess [at] itg.be)
 - participant demographic data (from HDSS)
