@@ -12,7 +12,7 @@ Clinicaltrials.gov: NCT04442165 https://clinicaltrials.gov/study/NCT04442165
 During December 2020-March 2022, households of a population cohort embedded in the Demographic Health Surveillance System (HDSS) of Polana Caniço, Maputo, Mozambique (16,500 people in a peri-urban neighbourhood of Maputo) were contacted biweekly. Residents reporting any respiratory sign, anosmia, or ageusia, were asked to self-administer a nasal swab, for SARS-CoV-2 PCR testing. Of a subset of participants, dried blood spots were repeatedly collected three-monthly from finger pricks at home. Antibodies against SARS-CoV-2 spike glycoprotein and nucleocapsid protein were detected using an in-house developed multiplex antibody assay. We estimated the incidence of respiratory illness and COVID-19, and SARS-CoV-2 seroprevalence. We used Cox regression models, adjusting for age and sex, to identify factors associated with first symptomatic COVID-19 and with SARS-CoV-2 sero-conversion in the first six months.
 
 # Timeline
-Data and sample collectio: 15/12/2020 to 31/03/2022 (data completion up to 30/04/2022)
+Data and sample collection: 15/12/2020 to 31/03/2022 (data completion up to 30/04/2022)
 
 # Manuscripts
 - Evaluation of a surrogate virus neutralization test for high-throughput serosurveillance of SARS-CoV-2 https://doi.org/10.1016/j.jviromet.2021.114228
