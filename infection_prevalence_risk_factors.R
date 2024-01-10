@@ -6,44 +6,35 @@
 #############################################################################
 
 # install/load packages
-pacman::p_load(readxl,dplyr,lubridate, ggplot2, forcats, Hmisc, ggthemes, scales, usethis, zoo)
+pacman::p_load(readxl,dplyr,lubridate, ggplot2, survival, ggthemes, scales)
 
 # import data
-serosurvey <- read.csv("serosurvey.csv")
-participants <- read.csv("participants.csv")
-cases_participantsFU <- read.csv("cases_participantsFU.csv")
+serosurvey <- read.csv("serosurvey_pseudo.csv")
+# reformat date and factor variables
+serosurvey$datacolheita <- as.Date(serosurvey$datacolheita)
+serosurvey$agegr <- factor(serosurvey$agegr, levels = c("0-17 years", "18-49 years", ">=50 years"))
+serosurvey$agegr10 <- factor(serosurvey$agegr10)
 
-# subset those tested, with a date of sample collection, and that the date was before 1 Oct 2021
-serosurveytested <- serosurvey %>% filter(Result=="neg"|Result=="pos") %>% filter(!is.na(datacolheita) & datacolheita < "2021-08-01")
-# remove dups
-dups <- which(duplicated(serosurveytested%>%select(participantID, datacolheita, Result))) # CHECK - same participantID, different dob
-serosurveytested <- serosurveytested %>% filter(!row.names(serosurveytested) %in% dups) 
+# do not consider samples collected after 31 July 2021 (testing incompleted)
+serosurvey <- serosurvey %>% filter(datacolheita<as.Date("2021-08-01"))
 
-# variable for month of DBS collection
-serosurveytested$month <- format(serosurveytested$datacolheita, "%Y-%m")
+# remove observation for which there is no age, no date of sample collection, or no result recorded
+serosurvey_noNA <- serosurvey %>%
+  filter(!is.na(agegr10) & !is.na(datacolheita) & !is.na(analyte25_RBD))
 
-# link to baseline participant data
-serosurvey_bl <- merge(serosurveytested, participants, by.x = "participantID", by.y = "openhdsindividualId", all.x = T)
-serosurvey_bl$agegr <- serosurvey_bl$agegr.x
-serosurvey_bl$agegr[is.na(serosurvey_bl$agegr.x)] <- serosurvey_bl$agegr.y[is.na(serosurvey_bl$agegr.x)]
-serosurvey_bl <- serosurvey_bl %>%
-  mutate(age = ifelse(is.na(age.x), age.y, age.x)) %>%
-  mutate(sex = ifelse(is.na(sex), GENDER, sex)) %>%
-  select(-age.x, -age.y, -agegr.x, -agegr.y, -GENDER, -start.y) 
-table(serosurvey_bl$agegr, useNA = "always")
-
-# excluding observations with missing ages or dates
-serosurvey_noNA <- serosurvey_bl %>%
-  filter(!is.na(age) & !is.na(month))
-
-# create a new result variable based on positive value Ab against RBD and against NP, and that distinguishes positive from vaccine versus from infection
-serosurvey_noNA$seroresultRBD_NP <- serosurvey_noNA$Result
-serosurvey_noNA$seroresultRBD_NP[serosurvey_noNA$Result=="pos"&grepl("Sim",serosurvey_noNA$vacinated)==T] <- "positive after vaccination"
-serosurvey_noNA$seroresultRBD_NP[serosurvey_noNA$seroresultRBD_NP=="pos"] <- "positive after infection"
-serosurvey_noNA$seroresultRBD_NP[serosurvey_noNA$seroresultRBD_NP=="neg"] <- "negative"
+# create the serosurvey result variable used for the main analysis: positive value/antibodies against both RBD (receptor binding proteïn of spike) ánd NP (nucleocapsid protein) antigens, which gave the best diagnostic performance in the validation study
+serosurvey_noNA <- serosurvey_noNA %>%
+  mutate(
+    seroresultRBD_NP = ifelse(
+      rowSums(select(., analyte25_RBD, analyte26_NP) >= 1) >= 2,
+      "positive after infection",
+      "negative"
+    )
+  )
+serosurvey_noNA$seroresultRBD_NP[serosurvey_noNA$seroresultRBD_NP=="positive after infection"&grepl("Sim",serosurvey_noNA$vacinated)==T] <- "positive after vaccination"
 table(serosurvey_noNA$seroresultRBD_NP, useNA = "always")
 
-# create a new result variable based on positive value Ab against 2 out of RBD, NP, and S1S2, and that distinguishes positive from vaccine versus from infection
+# create an alternative result variable based on positive value Ab against 2 out of RBD, NP, and S1S2, used for a sensitivity analysis
 serosurvey_noNA$seroresult2Ag <- "negative"
 serosurvey_noNA <- serosurvey_noNA %>%
   mutate(
@@ -56,7 +47,7 @@ serosurvey_noNA <- serosurvey_noNA %>%
 serosurvey_noNA$seroresult2Ag[serosurvey_noNA$seroresult2Ag=="positive after infection"&grepl("Sim",serosurvey_noNA$vacinated)==T] <- "positive after vaccination"
 table(serosurvey_noNA$seroresult2Ag, useNA = "always")
 
-# create a new result variable based on positive value Ab against RBD, not looking at NP
+# create a second alternative result variable based on positive value Ab against RBD, used for a sensitivity analysis, not taking NP into account - similar to the antigen target of most commercial ELISA tests
 serosurvey_noNA <- serosurvey_noNA %>%
   mutate(
     seroresultRBD = ifelse(analyte25_RBD >= 1,
@@ -68,99 +59,80 @@ serosurvey_noNA$seroresultRBD[serosurvey_noNA$seroresultRBD=="positive after inf
 table(serosurvey_noNA$seroresultRBD, useNA = "always")
 
 #### 1. NUMBER SERO-SURVEY PARTICIPANTS AND PERCENTAGE SEROCONVERSIONS ####
-# number of samples collected
-nrow(serosurvey)
-# number of participants with at least one sample tested
-num_participants <- serosurvey %>%
-  distinct(participantID) %>%
-  nrow()
-num_participants
-
 # number of samples tested
 nrow(serosurvey_noNA)
-# number of participants with at least one sample tested
+# number of participants with at least one sample tested up to 31 July 2021
 num_participants <- serosurvey_noNA %>%
-  distinct(participantID) %>%
+  distinct(pseudoID) %>%
   nrow()
 num_participants
 
-# count the number of seroconverted participants, with at least one "pos" result
+# count the number of seroconverted participants, with at least one "positive"
 num_participants_with_pos <- serosurvey_noNA %>%
-  filter(Result == "pos") %>%
-  distinct(participantID) %>%
+  filter(grepl("positive", seroresultRBD_NP) == T) %>%
+  distinct(pseudoID) %>%
   nrow()
 num_participants_with_pos
-
 # percentage seroconverted
 round(num_participants_with_pos/num_participants*100,1)
 
-# identify participants with "pos" followed by "neg" results
+# count the number of infection-induced seroconverted participants, with at least one "positive after infection" 
+num_infection_induced_seroconverted_participants <- serosurvey_noNA %>%
+  filter(grepl("positive after infection", seroresultRBD_NP) == T) %>%
+  distinct(pseudoID) %>%
+  nrow()
+num_infection_induced_seroconverted_participants
+
+# identify participants with infection-induced seroconvertion followed by seroreversion 
 participants_pos_neg <- serosurvey_noNA %>%
-  arrange(participantID, datacolheita) %>%
-  group_by(participantID) %>%
-  mutate(next_result = lead(Result)) %>%
-  filter(Result == "pos" & next_result == "neg") %>%
-  distinct(participantID) %>%
+  arrange(pseudoID, datacolheita) %>%
+  group_by(pseudoID) %>%
+  mutate(next_result = lead(seroresultRBD_NP)) %>%
+  filter(seroresultRBD_NP == "positive after infection" & next_result == "negative") %>%
+  distinct(pseudoID) %>%
   nrow()
 participants_pos_neg
 
 # sort the data by participant and collection date
 serosurvey_noNA <- serosurvey_noNA %>%
-  arrange(participantID, datacolheita)
+  arrange(pseudoID, datacolheita)
 
 # identify and count participants with a "pos" result followed by a result at a later date
 participants_with_result_after_pos <- serosurvey_noNA %>%
-  group_by(participantID) %>%
+  group_by(pseudoID) %>%
   filter("pos" %in% Result & lead(Result) != "pos") %>%
-  distinct(participantID)
+  distinct(pseudoID)
 num_participants_with_result_after_pos <- nrow(participants_with_result_after_pos)
 num_participants_with_result_after_pos
 # percentage
 round(participants_pos_neg/num_participants_with_result_after_pos*100,1)
 
 #### 2. CHARACTERISTICS OF TESTED SEROSURVEY PARTICIPANTS ####
-# keep one line per participantID
-serosurveyparticipants <- serosurvey_noNA %>% select(participantID, sex, age, agegr) 
-dups <- which(duplicated(serosurveyparticipants%>%select(participantID)))
+# keep one line per pseudoID
+serosurveyparticipants <- serosurvey_noNA %>% select(pseudoID, sex, agegr10) 
+dups <- which(duplicated(serosurveyparticipants%>%select(pseudoID)))
 serosurveyparticipants <- serosurveyparticipants %>% filter(!row.names(serosurveyparticipants) %in% dups) 
 
-# age 
+# age - this can't be done with the anonymized database without a variable age
 serosurveyparticipants %>%
   filter(!is.na(age)) %>%
   summarise(mean=mean(age), median=median(age),q25=quantile(age,0.25), q75=quantile(age,0.75))
-agegroup_table <- table(serosurveyparticipants$agegr)
+# agegroup distribution
+agegroup_table <- table(serosurveyparticipants$agegr10, useNA = "always")
 agegroup_table
 round(prop.table(agegroup_table)*100,1)
 
 # sex
-sex_table <- table(serosurveyparticipants$sex)
+sex_table <- table(serosurvey_noNA$sex, useNA = "always")
 sex_table
 round(prop.table(sex_table)*100,1)
 
 #### 3. SERO-PREVALENCE ####
-# 3.1 sero-prevalence of study population based on both RBP and NP positive
-# crude
-result_monthlycounts <- serosurvey_noNA %>%
-  select(month, Result) %>%
-  group_by(month, Result) %>%
-  summarise(n=n()) %>%
-  group_by(month) %>%
-  mutate(proportion = n / sum(n))  
-# add confidence intervals to proportions
-result_monthlycounts <- result_monthlycounts %>%
-  group_by(month) %>%
-  mutate(total_count = sum(n)) %>%
-  ungroup() %>%
-  mutate(
-    prop = n / total_count,
-    se = sqrt(prop * (1 - prop) / total_count),
-    z = qnorm(0.975),
-    ci_low = prop - z * se,
-    ci_high = prop + z * se
-  )
-result_monthlycounts
+# create a variable month 
+serosurvey_noNA$month <- format(serosurvey_noNA$datacolheita, "%Y-%m")
 
-# crude distinction vaccination positive vs infection positive
+# 3.1 infection- and vaccination-induced sero-prevalence based on both RBP and NP positive
+# crude 
 result_monthlycounts_RBD_NP <- serosurvey_noNA %>%
   select(month, seroresultRBD_NP) %>%
   group_by(month, seroresultRBD_NP) %>%
@@ -183,8 +155,8 @@ result_monthlycounts_RBD_NP <- select(result_monthlycounts_RBD_NP, -c("prop", "t
 result_monthlycounts_RBD_NP
 write.csv(result_monthlycounts_RBD_NP, "result_monthlycounts_RBD_NP.csv")
 
-# 3.2 sero-prevalence of study population based on at least 2Ag positive
-# crude distinction vaccination positive vs infection positive
+# 3.2 infection- and vaccination-induced sero-prevalence of study population based on at least 2 antigen targets positive
+# crude 
 result_monthlycounts_2Ag <- serosurvey_noNA %>%
   select(month, seroresult2Ag) %>%
   group_by(month, seroresult2Ag) %>%
@@ -207,8 +179,8 @@ result_monthlycounts_2Ag <- select(result_monthlycounts_2Ag, -c("prop", "total_c
 result_monthlycounts_2Ag
 write.csv(result_monthlycounts_2Ag, "result_monthlycounts_2Ag.csv")
 
-# 3.3 sero-prevalence of study population based on RBD positive
-# crude distinction vaccination positive vs infection positive
+# 3.3 infection- and vaccination-induced sero-prevalence of study population based on RBD positive
+# crude 
 result_monthlycounts_RBD <- serosurvey_noNA %>%
   select(month, seroresultRBD) %>%
   group_by(month, seroresultRBD) %>%
@@ -231,8 +203,7 @@ result_monthlycounts_RBD <- select(result_monthlycounts_RBD, -c("prop", "total_c
 result_monthlycounts_RBD
 write.csv(result_monthlycounts_RBD, "result_monthlycounts_RBD.csv")
 
-
-# 3.3 sero-prevalence by age based on both RBP and NP positive
+# 3.4 infection- and vaccination-induced sero-prevalence based on both RBP and NP positive by age
 # agegroup distribution
 table(serosurvey_noNA$agegr, useNA = "always")
 
@@ -271,7 +242,6 @@ result_monthlycounts_ageCI$ci_low[result_monthlycounts_ageCI$seroresultRBD_NP=="
 result_monthlycounts_ageCI$ci_high[result_monthlycounts_ageCI$seroresultRBD_NP=="positive after infection"&result_monthlycounts_ageCI$month=="2021-05"&result_monthlycounts_ageCI$agegr=="18-49 years"] <- result_monthlycounts_ageCI$ci_high[result_monthlycounts_ageCI$seroresultRBD_NP=="positive after infection"&result_monthlycounts_ageCI$month=="2021-05"&result_monthlycounts_ageCI$agegr=="18-49 years"] + 0.01250000
 result_monthlycounts_ageCI$ci_low[result_monthlycounts_ageCI$seroresultRBD_NP=="positive after infection"&result_monthlycounts_ageCI$month=="2021-06"&result_monthlycounts_ageCI$agegr=="18-49 years"] <- result_monthlycounts_ageCI$ci_low[result_monthlycounts_ageCI$seroresultRBD_NP=="positive after infection"&result_monthlycounts_ageCI$month=="2021-06"&result_monthlycounts_ageCI$agegr=="18-49 years"] + 0.06666667
 result_monthlycounts_ageCI$ci_high[result_monthlycounts_ageCI$seroresultRBD_NP=="positive after infection"&result_monthlycounts_ageCI$month=="2021-06"&result_monthlycounts_ageCI$agegr=="18-49 years"] <- result_monthlycounts_ageCI$ci_high[result_monthlycounts_ageCI$seroresultRBD_NP=="positive after infection"&result_monthlycounts_ageCI$month=="2021-06"&result_monthlycounts_ageCI$agegr=="18-49 years"] + 0.06666667
-
 result_monthlycounts_ageCI$ci_low[result_monthlycounts_ageCI$seroresultRBD_NP=="positive after infection"&result_monthlycounts_ageCI$month=="2021-04"&result_monthlycounts_ageCI$agegr==">=50 years"] <- result_monthlycounts_ageCI$ci_low[result_monthlycounts_ageCI$seroresultRBD_NP=="positive after infection"&result_monthlycounts_ageCI$month=="2021-04"&result_monthlycounts_ageCI$agegr==">=50 years"] + 0.01935484
 result_monthlycounts_ageCI$ci_high[result_monthlycounts_ageCI$seroresultRBD_NP=="positive after infection"&result_monthlycounts_ageCI$month=="2021-04"&result_monthlycounts_ageCI$agegr==">=50 years"] <- result_monthlycounts_ageCI$ci_high[result_monthlycounts_ageCI$seroresultRBD_NP=="positive after infection"&result_monthlycounts_ageCI$month=="2021-04"&result_monthlycounts_ageCI$agegr==">=50 years"] + 0.01935484
 result_monthlycounts_ageCI$ci_low[result_monthlycounts_ageCI$seroresultRBD_NP=="positive after infection"&result_monthlycounts_ageCI$month=="2021-05"&result_monthlycounts_ageCI$agegr==">=50 years"] <- result_monthlycounts_ageCI$ci_low[result_monthlycounts_ageCI$seroresultRBD_NP=="positive after infection"&result_monthlycounts_ageCI$month=="2021-05"&result_monthlycounts_ageCI$agegr==">=50 years"] + 0.03333333
@@ -300,19 +270,7 @@ seroprevalence_agegroup
 # save plot
 ggsave("seroprevalence_agegroup.jpg", seroprevalence_agegroup, dpi = 250, width = 9, height = 3.5)
 
-# geom_errorbar(data = confidence_intervals, aes(x = month, ymin = ci_lower, ymax = ci_upper),
-  #               width = 0.2, color = "black", position = position_dodge(0.9))
-
-
-# confidence_intervals <- result_proportions %>% # not sure what's wrong with this bit of code to add whiskers for confidence intervals
-#   group_by(month, agegr) %>%
-#   summarize(ci_lower = Hmisc::bca(proportion, by = NULL, 0.95)$lower,
-#             ci_upper = Hmisc::bca(proportion, by = NULL, 0.95)$upper)
-
-#   geom_errorbar(data = confidence_intervals, aes(x = month, ymin = ci_lower, ymax = ci_upper),
-#                 width = 0.2, color = "black", position = position_dodge(0.9))
-
-# 3.3 sero-prevalence by age based on at least 2 Ag positive
+# 3.5 sero-prevalence by age based on at least 2 Ag positive
 # agegroup distribution
 table(serosurvey_noNA$agegr, useNA = "always")
 
@@ -351,19 +309,16 @@ seroprevalence_agegroup <- ggplot(result_monthlycounts_age, aes(x = month, y = p
 seroprevalence_agegroup
 ggsave("seroprevalence_agegroup_2Ag.jpg", seroprevalence_agegroup, dpi = 250, width = 9, height = 3.5)
 
-# 3.4. age-standardised sero-prevalence (adjusting to three age groups)
-
-
 
 #### 4. RISK FACTORS OF INFECTION UP TO 31 JULY ####
 # remove serosurvey visits after vaccination
 serosurvey_unvacc <- serosurvey_noNA %>% filter(grepl("Sim",serosurvey_noNA$vacinated)==F)
 
-# transform serosurvey to survival data, generating for each participantID a variable time (observation) and a variable event (1 = serocoverted, 0 = no seroconversion) 
+# transform serosurvey to survival data, generating for each pseudoID a variable time (observation) and a variable event (1 = serocoverted, 0 = no seroconversion) 
 # generate a time variable with time since previous observation, or 90 days (3 months) if no prior visit
 serosurvey_surv <- serosurvey_unvacc %>%
-  group_by(participantID) %>%
-  arrange(participantID, datacolheita) %>%
+  group_by(pseudoID) %>%
+  arrange(pseudoID, datacolheita) %>%
   mutate(
     time = c(90, diff(datacolheita))  # Calculate time since previous observation
   ) %>%
@@ -374,33 +329,32 @@ serosurvey_surv$time[serosurvey_surv$seroresultRBD_NP=='positive after infection
 
 # remove observations of which datacolheita follows an observation with as variable Result 'pos'
 serosurvey_surv_censored <- serosurvey_surv %>%
-  arrange(participantID, datacolheita) %>%
-  group_by(participantID) %>%
-  filter(!(lag(seroresultRBD_NP, default = "") == "positive after infection" & Result == "positive after infection")) %>%
+  arrange(pseudoID, datacolheita) %>%
+  group_by(pseudoID) %>%
+  filter(!(lag(seroresultRBD_NP, default = "") == "positive after infection" & seroresultRBD_NP == "positive after infection")) %>%
   ungroup()
 
-# summarised to one row per participantID, adding a variable event which is 1 if one of the Result values is 'pos' and 0 if one of the Result variables is 'neg', 
+# summarised to one row per pseudoID, adding a variable event which is 1 if one of the Result values is 'pos' and 0 if one of the Result variables is 'neg', 
 # a variable 'time' (in months) which is the sum of time (in days) of all observations of that participant, 
 # a variable 'ageyears' being the mean of age values at the time of visits,
 # a variable 'inclusiondate' which is the first date of 'start', and 
-# a variable 'nsurveys' which is the number of rows of that participantID
+# a variable 'nsurveys' which is the number of rows of that pseudoID
 serosurvey_surv_bl <- serosurvey_surv_censored %>%
-  group_by(participantID) %>%
+  group_by(pseudoID) %>%
   summarise(
     event = ifelse("positive after infection" %in% seroresultRBD_NP, 1, 0),
     time = sum(time) / 30,
-    ageyears = mean(age),
-    inclusiondate = min(start.x),
+#    ageyears = mean(age),
+    inclusiondate = min(datacolheita),
     nsurveys = n(),
     sex = first(sex),
     ednivel_educacao = first(ednivel_educacao),
     SesScoreQnt = first(SesScoreQnt),
-    locationid = first(locationid),
     mass_bus = first(mass_bus),
     main_bus = first(main_bus),
     bus_use = first(bus_use),
-    main_ocupation = first(main_ocupation),
-    main_ocupation_specicy = first(main_ocupation_specicy),
+#    main_ocupation = first(main_ocupation),
+#    main_ocupation_specicy = first(main_ocupation_specicy),
     type_cancer = first(type_cancer),
     cancer_histories = first(cancer_histories),
     other_imunodef = first(other_imunodef),
@@ -416,10 +370,10 @@ serosurvey_surv_bl <- serosurvey_surv_censored %>%
     tb = first(tb),
     smoking = first(smoking),
     other_health_condition = first(other_health_condition),
-    specify_other_health_condition = first(specify_other_health_condition),
-    other_drugs = first(other_drugs),
-    drug_available = first(drug_available),
-    if_yes_indicate = first(if_yes_indicate),
+    # specify_other_health_condition = first(specify_other_health_condition),
+#    other_drugs = first(other_drugs),
+#    drug_available = first(drug_available),
+    # if_yes_indicate = first(if_yes_indicate),
     bedroom_sharing = first(bedroom_sharing),
     toylet_sharing = first(toylet_sharing),
     handwash = first(handwash),
@@ -428,7 +382,7 @@ serosurvey_surv_bl <- serosurvey_surv_censored %>%
     health_care_preference = first(health_care_preference),
     health_care_preference_other = first(health_care_preference_other),
     health_worker = first(health_worker),
-    MUAC = first(MUAC),
+    # MUAC = first(MUAC),
     BMI = first(BMI),
     hiv = last(hiv),
     pregnancy_history = first(pregnancy_history),
@@ -439,12 +393,12 @@ serosurvey_surv_bl <- serosurvey_surv_censored %>%
     chronic_lung_disease = first(chronic_lung_disease),
     chronic_liver_disease = first(chronic_liver_disease),
     chronic_hematological_disease = first(chronic_hematological_disease),
-    agegr = first(agegr)
+    agegr = first(agegr), 
+    agegr10 = first(agegr10)
   ) %>%
   ungroup()
 
 # create factor variables with categories useful for analysis
-serosurvey_surv_bl$agegr10 <- cut(serosurvey_surv_bl$ageyears, breaks = breaks, labels = c("0-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70+"), right = FALSE)
 serosurvey_surv_bl$agegr10 <- factor(serosurvey_surv_bl$agegr10)
 serosurvey_surv_bl$sex <- factor(serosurvey_surv_bl$sex)
 serosurvey_surv_bl$agegr <- factor(serosurvey_surv_bl$agegr)
@@ -526,7 +480,7 @@ serosurvey_surv_bl <- serosurvey_surv_bl %>%
 serosurvey_surv_bl <- serosurvey_surv_bl %>% 
   mutate(smokingbin = fct_relevel(smokingbin, "non smoker", after = 0)) 
 
-# UNIVARIABLE ANALYSIS
+##### 4.1. UNIVARIABLE ANALYSIS ####
 age <- serosurvey_surv_bl %>%
   group_by(agegr10) %>%
   summarise(total=n(), pcttotal=(round(n()/count(serosurvey_surv_bl)*100,1)), covid19=sum(event), pctcases=round(sum(event)/sum(serosurvey_surv_bl$event)*100,1))
@@ -712,9 +666,9 @@ soap_availability <- serosurvey_surv_bl %>%
   )
 
 
-# cox regression calculating hazard ratios
+##### 4.2. COX REGRESSION calculating hazard ratios, adjusted for age ####
 # sex 
-cox_model <- coxph(Surv(time, event) ~ ageyears + sex, data = serosurvey_surv_bl)
+cox_model <- coxph(Surv(time, event) ~ agegr10 + sex, data = serosurvey_surv_bl) # analysis done with variable age in years, but replaced by age groups to anonymize data
 
 # Extract hazard ratios and confidence intervals
 hazard_ratios <- exp(coef(cox_model))
@@ -729,7 +683,7 @@ sexresult <- data.frame(Hazard_Ratio = rounded_hazard_ratios,
 print(sexresult)
 
 # SES
-cox_model <- coxph(Surv(time, event) ~ ageyears + sex + SesScoreQnt, data = serosurvey_surv_bl)
+cox_model <- coxph(Surv(time, event) ~ agegr10 + sex + SesScoreQnt, data = serosurvey_surv_bl)
 
 # Extract hazard ratios and confidence intervals
 hazard_ratios <- exp(coef(cox_model))
@@ -765,7 +719,7 @@ explanatory_variables <- c("education", "lowestSES", "SesScoreQnt", "smokingbin"
 
 for (variable in explanatory_variables) {
   # Create a formula including the variable, age, and sex
-  formula <- as.formula(paste("Surv(time, event) ~ ", variable, "+ ageyears + sex"))
+  formula <- as.formula(paste("Surv(time, event) ~ ", variable, "+ agegr10 + sex"))
   
   # Fit the Cox regression model
   cox_model <- coxph(formula, data = serosurvey_surv_bl)
@@ -788,7 +742,7 @@ explanatory_variables <- c("overweight", "hivbin", "tbbin", "hypertensionbin", "
 
 for (variable in explanatory_variables) {
   # Create a formula including the variable, age, and sex
-  formula <- as.formula(paste("Surv(time, event) ~ ", variable, "+ ageyears + sex"))
+  formula <- as.formula(paste("Surv(time, event) ~ ", variable, "+ agegr10 + sex"))
   
   # Fit the Cox regression model
   cox_model <- coxph(formula, data = serosurvey_surv_bl)
@@ -810,7 +764,7 @@ for (variable in explanatory_variables) {
 # filter out children
 serosurvey_surv_bl_ad <- serosurvey_surv_bl %>% filter(ageyears>15.99)
 # Fit the Cox regression model
-cox_model <- coxph(Surv(time, event) ~ ageyears + sex + overweight, data = serosurvey_surv_bl_ad)
+cox_model <- coxph(Surv(time, event) ~ agegr10 + sex + overweight, data = serosurvey_surv_bl_ad)
 
 # Extract hazard ratios and confidence intervals
 hazard_ratios <- exp(coef(cox_model))
@@ -847,7 +801,7 @@ print(SES)
 serosurvey_surv_bl <- serosurvey_surv_bl %>%
   mutate(lowestSES = relevel(lowestSES, ref = 0))
 # Fit the Cox regression model
-cox_model <- coxph(Surv(time, event) ~ ageyears + sex + lowestSES, data = serosurvey_surv_bl)
+cox_model <- coxph(Surv(time, event) ~ agegr10 + sex + lowestSES, data = serosurvey_surv_bl)
 # Extract hazard ratios and confidence intervals
 hazard_ratios <- exp(coef(cox_model))
 conf_intervals <- exp(confint(cox_model))
@@ -865,7 +819,7 @@ print(SES)
 serosurvey_surv_bl <- serosurvey_surv_bl %>%
   mutate(education = relevel(education, ref = "primary"))
 # Fit the Cox regression model
-cox_model <- coxph(Surv(time, event) ~ ageyears + sex + education, data = serosurvey_surv_bl)
+cox_model <- coxph(Surv(time, event) ~ agegr10 + sex + education, data = serosurvey_surv_bl)
 # Extract hazard ratios and confidence intervals
 hazard_ratios <- exp(coef(cox_model))
 conf_intervals <- exp(confint(cox_model))
@@ -884,7 +838,7 @@ serosurvey_surv_bl_nosharedtaxi <- serosurvey_surv_bl %>% filter(publictransport
 serosurvey_surv_bl <- serosurvey_surv_bl %>%
   mutate(publictransport_pastweek = relevel(publictransport_pastweek, ref = "none"))
 # Fit the Cox regression model
-cox_model <- coxph(Surv(time, event) ~ ageyears + sex + publictransport_pastweek, data = serosurvey_surv_bl)
+cox_model <- coxph(Surv(time, event) ~ agegr10 + sex + publictransport_pastweek, data = serosurvey_surv_bl)
 # Extract hazard ratios and confidence intervals
 hazard_ratios <- exp(coef(cox_model))
 conf_intervals <- exp(confint(cox_model))
