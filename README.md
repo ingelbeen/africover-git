@@ -3,7 +3,7 @@
 # Study registration 
 Clinicaltrials.gov: NCT04442165 https://clinicaltrials.gov/study/NCT04442165
 
-# Participating Organisations
+# Participating organisations
 - Instituut voor Tropische Geneeskunde (ITM), Belgium (Coordinating PI Brecht Ingelbeen, former: Marc-Alain Widdowson)
 - Instituto Nacional de Saúde (INS), Mozambique (PI Ivalda Macicame)
 - Institut de Recherche pour le Développement (IRD), France (PI Martine Peeters)
