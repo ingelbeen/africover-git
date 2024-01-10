@@ -4,7 +4,7 @@
 Clinicaltrials.gov: NCT04442165 https://clinicaltrials.gov/study/NCT04442165
 
 ## Manuscripts
-- Evaluation of a surrogate virus neutralization test for high-throughput serosurveillance of SARS-CoV-2 https://pubmed.ncbi.nlm.nih.gov/34224754/
+- Evaluation of a surrogate virus neutralization test for high-throughput serosurveillance of SARS-CoV-2 https://doi.org/10.1016/j.jviromet.2021.114228
 - Mild and moderate COVID-19 during Alpha, Delta and Omikron pandemic waves in urban Maputo, Mozambique, December 2020-March 2022: a population-based surveillance study https://doi.org/10.1101/2023.12.22.23300474
 
 ## Participating Organisations
