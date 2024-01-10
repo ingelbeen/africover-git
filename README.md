@@ -8,7 +8,7 @@ Clinicaltrials.gov: NCT04442165 https://clinicaltrials.gov/study/NCT04442165
 - Mild and moderate COVID-19 during Alpha, Delta and Omikron pandemic waves in urban Maputo, Mozambique, December 2020-March 2022: a population-based surveillance study https://doi.org/10.1101/2023.12.22.23300474
 
 ## Participating Organisations
-- Instituut voor Tropische Geneeskunde (ITM), Belgium (PI Marc-Alain Widdowson)
+- Instituut voor Tropische Geneeskunde (ITM), Belgium (Coordinating PI Brecht Ingelbeen, former: Marc-Alain Widdowson)
 - Instituto Nacional de Saúde (INS), Mozambique (PI Ivalda Macicame)
 - Institut de Recherche pour le Développement (IRD), France (PI Martine Peeters)
 
