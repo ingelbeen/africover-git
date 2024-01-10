@@ -29,7 +29,9 @@ Data and sample collection: 15/12/2020 to 31/03/2022 (data completion up to 30/0
 ## Open data (allowing reproduction of results in https://doi.org/10.1101/2023.12.22.23300474)
 - COVID-19 case data (all participants with acute respiratory illness test results, demographic and baseline participant data): to be updated
 - sero-survey data (dried blood spots collected 15 December 2020-31 July 2021 with demographic and baseline participant data): "serosurvey_pseudo.csv"
-  
+
+For reasons of confidentiality, the open data does not contain the geographical coordinates, nor any other demographic data (e.g. age, household structure), that could allow identification of participants.
+
 ## Raw data (available if approved following request to ITMresearchdataaccess [at] itg.be)
 - participant demographic data (from HDSS)
 - participant socio-economic data (from HDSS)
@@ -47,11 +49,10 @@ Data and sample collection: 15/12/2020 to 31/03/2022 (data completion up to 30/0
 
 # Data analysis scripts
 ## Description of the open data scripts (anonymized data available on the github)
+1. "/infection_prevalence_risk_factors.R" the code to analyse the serosurvey results: describe serosurvey participant characteristics, samples collected, sero-prevalence over time, and SARS-CoV-2 seroconversion risk factor analysis (Cox regression). It can be run on the "serosurvey_pseudo.csv" data.
+2. "/disease_incidence.R" the code to analyse active household follow-up: describe serosurvey participant characteristics, epidemiological curve, symptoms associated with COVID-19 confirmation, COVID-19 risk factor analysis (Cox regression). It can be run on the "participant_cases_FU.csv" data (to be updated by 14/01/2024).
 
-To run the merge_odk_lab.R script, you will need a folder "database" in your project, with the different databases, which will be put on this repository once completed, cleaned and anonymized.
-To run the analysis scripts, you need first to run merge_odk_lab.R, which will generate .csv files with cleaned and linked databases, which are then imported in the analysis scripts.
-
-## Description of the raw data scripts
+## Description of the raw data scripts (replaced by the open data scripts to ensure reproducibility)
 - merge_odk_lab.R - importing, cleaning and merging databases to create a single participant database, a possible Covid19 case database and a sero-survey database.
 - infection_prevalence_risk_factors.R - prevalence and risk factors for infection in the first pandemic year (SARS-CoV-2 Ab detected during baseline and M3 sero-survey rounds)
 - nasal_swab_performance.R - positivity of PCR on nasal swab samples of possible cases by age, time between symptom onset and sample collection, variant (?), and clinical signs+symptoms
