@@ -27,7 +27,8 @@ Data and sample collection: 15/12/2020 to 31/03/2022 (data completion up to 30/0
 
 # Data
 ## Open data (allowing reproduction of results in https://doi.org/10.1101/2023.12.22.23300474)
-- COVID-19 case data (all participants with acute respiratory illness test results, demographic and baseline participant data): to be updated
+- possible COVID-19 case data (all participants with acute respiratory illness test results, clinical signs and symptoms, age groups, sex, and socio-economic quintile): "possiblecases_pseudo.csv"
+- active COVID-19 survceillance data (all participants with acute respiratory illness test results, demographic and baseline participant data): to be updated (by 15 January 2023)
 - sero-survey data (dried blood spots collected 15 December 2020-31 July 2021 with demographic and baseline participant data): "serosurvey_pseudo.csv"
 
 For reasons of confidentiality, the open data does not contain the geographical coordinates, nor any other demographic data (e.g. age, household structure), that could allow identification of participants.
@@ -49,8 +50,9 @@ For reasons of confidentiality, the open data does not contain the geographical 
 
 # Data analysis scripts
 ## Description of the open data scripts (anonymized data available on the github)
-1. "/infection_prevalence_risk_factors.R" the code to analyse the serosurvey results: describe serosurvey participant characteristics, samples collected, sero-prevalence over time, and SARS-CoV-2 seroconversion risk factor analysis (Cox regression). It can be run on the "serosurvey_pseudo.csv" data.
-2. "/disease_incidence.R" the code to analyse active household follow-up: describe serosurvey participant characteristics, epidemiological curve, symptoms associated with COVID-19 confirmation, COVID-19 risk factor analysis (Cox regression). It can be run on the "participant_cases_FU.csv" data (to be updated by 14/01/2024).
+1. "/symptoms_associated_with_COVID19.R" the code to analyse clinical signs and symptoms associated with COVID-19 confirmation (SARS-CoV-2 PCR positive) among possible COVID-19 cases (onset of at least one respiratory symptom, ageusia, or anosmia in the past 2 weeks)  
+2. "/infection_prevalence_risk_factors.R" the code to analyse the serosurvey results: describe serosurvey participant characteristics, samples collected, sero-prevalence over time, and SARS-CoV-2 seroconversion risk factor analysis (Cox regression). It can be run on the "serosurvey_pseudo.csv" data.
+3. "/disease_incidence.R" the code to analyse active household follow-up: describe serosurvey participant characteristics, epidemiological curve, symptoms associated with COVID-19 confirmation, COVID-19 risk factor analysis (Cox regression). It can be run on the "participant_cases_FU.csv" data (to be updated by 14/01/2024).
 
 ## Description of the raw data scripts (replaced by the open data scripts to ensure reproducibility)
 - merge_odk_lab.R - importing, cleaning and merging databases to create a single participant database, a possible Covid19 case database and a sero-survey database.
