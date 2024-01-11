@@ -31,7 +31,8 @@ Three dataframes that allow reproduction of results in https://doi.org/10.1101/2
 2. active COVID-19 survceillance data (all participants with acute respiratory illness test results, demographic and baseline participant data): "cases_participantsFU_pseudo.csv"
 3. sero-survey data (dried blood spots collected 15 December 2020-31 July 2021 with demographic and baseline participant data): "serosurvey_pseudo.csv"
 
-# Data analysis scripts (can be run on the open anonymized data available on this repository)
+# Data analysis scripts
+Script are in R. Analyses can be run on the open anonymized data available on this repository.
 1. "/symptoms_associated_with_COVID19.R" the code to analyse clinical signs and symptoms associated with COVID-19 confirmation (SARS-CoV-2 PCR positive) among possible COVID-19 cases (onset of at least one respiratory symptom, ageusia, or anosmia in the past 2 weeks). It can be run on the "possiblecases_pseudo.csv" data.
 2. "/disease_incidence.R" the code to analyse active household follow-up: describe cohort participant characteristics, epidemiological curve, COVID-19 risk factor analysis (Cox regression). Part of it can be run on the "participant_cases_FU.csv" data. Part of it uses identifying data (e.g., geographical coordinates), which is not available as open data.
 3. "/infection_prevalence_risk_factors.R" the code to analyse the serosurvey results: describe serosurvey participant characteristics, samples collected, sero-prevalence over time, and SARS-CoV-2 seroconversion risk factor analysis (Cox regression). It can be run on the "serosurvey_pseudo.csv" data.
