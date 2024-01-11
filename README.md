@@ -26,7 +26,7 @@ Data and sample collection: 15/12/2020 to 31/03/2022 (data completion up to 30/0
 - Number of individuals in the social mixing survey: (to be completed)
 
 # Data 
-Three dataframes that allow reproduction of results in https://doi.org/10.1101/2023.12.22.23300474. For reasons of confidentiality, the open data does not contain the geographical coordinates, nor any other demographic data (e.g. age, household structure), that could allow identification of participants.
+Three dataframes that allow reproduction of results in https://doi.org/10.1101/2023.12.22.23300474. For reasons of confidentiality, the open data does not contain the geographical coordinates, nor any other demographic data (e.g. age, household structure) that could allow identification of participants.
 1. possible COVID-19 case data (all participants with acute respiratory illness test results, clinical signs and symptoms, age groups, sex, and socio-economic quintile): "possiblecases_pseudo.csv"
 2. active COVID-19 survceillance data (all participants with acute respiratory illness test results, demographic and baseline participant data): "cases_participantsFU_pseudo.csv"
 3. sero-survey data (dried blood spots collected 15 December 2020-31 July 2021 with demographic and baseline participant data): "serosurvey_pseudo.csv"
