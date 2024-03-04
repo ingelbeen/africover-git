@@ -8,13 +8,17 @@
 
 # install/load packages
 pacman::p_load(lubridate, broom, dplyr, forcats)
+#, ggmap, survival, flextable, janitor, knitr, httr, lmtest, scales, usethis, tidyverse, stringr, purrr, gtsummary, broom, lmtest, parameters, see)
 
 # import possible case data
 possiblecases <- read.csv("possiblecases_pseudo.csv")
 
-# subset data to keep only those with results (112 no nasal swab collected, swab not tested, or no test result) and age recorded
-possiblecases <- possiblecases %>% filter(!is.na(agegr10))
+# subset data to keep only those with results (112 no nasal swab collected, swab not tested, or no test result) 
 testedpossiblecases <- possiblecases %>% filter(testresult=="positive" | testresult=="negative")
+
+# create a dichotomous var dor oxygen saturation
+testedpossiblecases$O2under95[testedpossiblecases$oxygen_saturation<95] <- "yes"
+testedpossiblecases$O2under95[testedpossiblecases$oxygen_saturation>94.9999999] <- "no"
 
 #### 1. FREQUENCY OF TESTRESULTS BY AGE AND SEX ####
 # frequencies confirmed
@@ -59,8 +63,6 @@ testedpossiblecases$O2under92[testedpossiblecases$oxygen_saturation>91.9999999] 
 table(testedpossiblecases$O2under92, testedpossiblecases$testresult, useNA = "always")
 round(prop.table(table(testedpossiblecases$O2under92, testedpossiblecases$testresult),2)*100,2) 
 # oxygen saturation below 95%
-testedpossiblecases$O2under95[testedpossiblecases$oxygen_saturation<95] <- "yes"
-testedpossiblecases$O2under95[testedpossiblecases$oxygen_saturation>94.9999999] <- "no"
 table(testedpossiblecases$O2under95, testedpossiblecases$testresult, useNA = "always")
 round(prop.table(table(testedpossiblecases$O2under95, testedpossiblecases$testresult),2)*100,1) 
 # cough
@@ -124,21 +126,17 @@ testedpossiblecases <- testedpossiblecases %>%
   )
   )
 
-# add age group to the explanatory vars 
-explanatory_vars <- c(explanatory_vars, "agegr10")
-
-# drop observations with missing age group
-testedpossiblecases <- testedpossiblecases %>%  filter(!is.na(agegr10)) 
-
 # convert age group to factor and define which age group to make reference
 testedpossiblecases$agegr10 <- factor(testedpossiblecases$agegr10)
 testedpossiblecases <- testedpossiblecases %>% mutate(agegr10 = fct_relevel(agegr10, "0-9", after = 0)) 
+# add age group to the explanatory vars 
+explanatory_vars <- c(explanatory_vars, "agegr10")
 
 # convert socio-economic level of household to factor and define which age group to make reference
 testedpossiblecases$SesScoreQnt <- factor(testedpossiblecases$SesScoreQnt)
 testedpossiblecases <- testedpossiblecases %>% mutate(SesScoreQnt = fct_relevel(SesScoreQnt, "3. med.", after = 0)) 
 
-## logistic regression analyses - in the analyses in the manuscript, age as a continuous variable was used, while on the anonmymized data, only age grousp are available
+## UNIVARIABLE logistic regression analyses 
 # age groups
 table(testedpossiblecases$agegr10, testedpossiblecases$testresult)
 prop.table(table(testedpossiblecases$agegr10, testedpossiblecases$testresult),2)
@@ -168,12 +166,7 @@ glm(testresult ~ SesScoreQnt + agegr10, family = "binomial", data = testedpossib
 # fever
 table(testedpossiblecases$fever, testedpossiblecases$testresult)
 prop.table(table(testedpossiblecases$fever, testedpossiblecases$testresult),2)
-# univariable
 glm(testresult ~ fever, family = "binomial", data = testedpossiblecases) %>% 
-  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs
-  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
-# multivariable (adjusting for age groups)
-glm(testresult ~ fever + agegr10, family = "binomial", data = testedpossiblecases) %>% 
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
@@ -182,16 +175,8 @@ glm(testresult ~ throat, family = "binomial", data = testedpossiblecases) %>%
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ throat+ agegr10, family = "binomial", data = testedpossiblecases) %>%    
-  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
-  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
-
 # rhinorrhea
 glm(testresult ~ rhinorrhea, family = "binomial", data = testedpossiblecases) %>%    
-  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
-  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
-
-glm(testresult ~ rhinorrhea + agegr10, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
@@ -200,16 +185,8 @@ glm(testresult ~ dyspnoea, family = "binomial", data = testedpossiblecases) %>%
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ dyspnoea + agegr10, family = "binomial", data = testedpossiblecases) %>%    
-  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
-  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
-
 # cough
 glm(testresult ~ cough, family = "binomial", data = testedpossiblecases) %>%    
-  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
-  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
-
-glm(testresult ~ cough + agegr10, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
@@ -218,16 +195,8 @@ glm(testresult ~ chest_pain, family = "binomial", data = testedpossiblecases) %>
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ chest_pain + agegr10, family = "binomial", data = testedpossiblecases) %>%    
-  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
-  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
-
 # vomit
 glm(testresult ~ vomit, family = "binomial", data = testedpossiblecases) %>%    
-  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
-  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
-
-glm(testresult ~ vomit + agegr10, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
@@ -236,16 +205,8 @@ glm(testresult ~ anosmia, family = "binomial", data = testedpossiblecases) %>%
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ anosmia + agegr10, family = "binomial", data = testedpossiblecases) %>%    
-  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
-  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
-
 # ageusia
 glm(testresult ~ ageusia, family = "binomial", data = testedpossiblecases) %>%    
-  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
-  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
-
-glm(testresult ~ ageusia + agegr10, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
@@ -254,16 +215,8 @@ glm(testresult ~ chills, family = "binomial", data = testedpossiblecases) %>%
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ chills + agegr10, family = "binomial", data = testedpossiblecases) %>%    
-  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
-  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
-
 # nausea
 glm(testresult ~ nausea , family = "binomial", data = testedpossiblecases) %>%    
-  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
-  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
-
-glm(testresult ~ nausea + agegr10, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
@@ -272,16 +225,8 @@ glm(testresult ~ diarrhea, family = "binomial", data = testedpossiblecases) %>%
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ diarrhea + agegr10, family = "binomial", data = testedpossiblecases) %>%    
-  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
-  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
-
 # arthromyalgia
 glm(testresult ~ arthromyalgia, family = "binomial", data = testedpossiblecases) %>%    
-  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
-  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
-
-glm(testresult ~ arthromyalgia + agegr10, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
@@ -290,16 +235,8 @@ glm(testresult ~ myalgia, family = "binomial", data = testedpossiblecases) %>%
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ myalgia + agegr10, family = "binomial", data = testedpossiblecases) %>%    
-  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
-  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
-
 # fatigue
 glm(testresult ~ fatigue, family = "binomial", data = testedpossiblecases) %>%    
-  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
-  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
-
-glm(testresult ~ fatigue + agegr10, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
@@ -308,16 +245,8 @@ glm(testresult ~ O2under95, family = "binomial", data = testedpossiblecases) %>%
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ O2under95 + agegr10, family = "binomial", data = testedpossiblecases) %>%    
-  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
-  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
-
 # appitite_loss
 glm(testresult ~ appitite_loss, family = "binomial", data = testedpossiblecases) %>%    
-  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
-  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
-
-glm(testresult ~ appitite_loss + agegr10, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
@@ -326,16 +255,8 @@ glm(testresult ~ rash, family = "binomial", data = testedpossiblecases) %>%
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-glm(testresult ~ rash + agegr10, family = "binomial", data = testedpossiblecases) %>%    
-  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
-  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
-
 # headache
 glm(testresult ~ headache, family = "binomial", data = testedpossiblecases) %>%    
-  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
-  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
-
-glm(testresult ~ headache + agegr10, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
@@ -344,11 +265,75 @@ glm(testresult ~ nosebleed, family = "binomial", data = testedpossiblecases) %>%
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
+## MULTIVARIABLE logistic regression analyses adjusting for agegroups - in the analyses in the manuscript, age as a continuous variable was used, while on the anonmymized data, only age grousp are available
+
+# drop observations with missing age group
+testedpossiblecases <- testedpossiblecases %>%  filter(!is.na(agegr10)) 
+
+# expl variables
+glm(testresult ~ fever + agegr10, family = "binomial", data = testedpossiblecases) %>% 
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+glm(testresult ~ throat+ agegr10, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+glm(testresult ~ rhinorrhea + agegr10, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+glm(testresult ~ dyspnoea + agegr10, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+glm(testresult ~ cough + agegr10, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+glm(testresult ~ chest_pain + agegr10, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+glm(testresult ~ vomit + agegr10, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+glm(testresult ~ anosmia + agegr10, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+glm(testresult ~ ageusia + agegr10, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+glm(testresult ~ chills + agegr10, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+glm(testresult ~ nausea + agegr10, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+glm(testresult ~ diarrhea + agegr10, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+glm(testresult ~ arthromyalgia + agegr10, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+glm(testresult ~ myalgia + agegr10, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+glm(testresult ~ fatigue + agegr10, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+glm(testresult ~ O2under95 + agegr10, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+glm(testresult ~ appitite_loss + agegr10, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+glm(testresult ~ rash + agegr10, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
+glm(testresult ~ headache + agegr10, family = "binomial", data = testedpossiblecases) %>%    
+  tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
+  mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 glm(testresult ~ nosebleed + agegr10, family = "binomial", data = testedpossiblecases) %>%    
   tidy(exponentiate = TRUE, conf.int = TRUE) %>%        # exponentiate and produce CIs   
   mutate(across(where(is.numeric), round, digits = 2))  # round all numeric columns
 
-# compare the association with anosmia and ageusia during alpha vs. delta vs. omikron peaks
+
+## compare the association with anosmia and ageusia during alpha vs. delta vs. omikron peaks
 testedpossiblecases$variant[testedpossiblecases$monthonset<"2021-06"] <- "alpha/beta"
 testedpossiblecases$variant[testedpossiblecases$monthonset<"2021-11"&testedpossiblecases$monthonset>"2021-05"] <- "delta"
 testedpossiblecases$variant[testedpossiblecases$monthonset>"2021-10"] <- "omikron"
