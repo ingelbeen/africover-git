@@ -7,8 +7,7 @@
 #############################################################################
 
 # install/load packages
-pacman::p_load(lubridate, broom, dplyr)
-#, ggmap, survival, flextable, janitor, knitr, httr, lmtest, scales, usethis, tidyverse, stringr, purrr, gtsummary, broom, lmtest, parameters, see)
+pacman::p_load(lubridate, broom, dplyr, forcats)
 
 # import possible case data
 possiblecases <- read.csv("possiblecases_pseudo.csv")
